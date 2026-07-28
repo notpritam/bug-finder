@@ -17,14 +17,24 @@ import type { ReplayClock } from "./useReplayClock";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
+export interface Trim {
+  in: number;
+  out: number;
+}
+
 export function ReplayPlayer({
   bug,
   clock,
   highlightRect,
+  trim,
+  onTrimChange,
 }: {
   bug: Bug;
   clock: ReplayClock;
   highlightRect: { x: number; y: number; w: number; h: number } | null;
+  /** Draft mode: the kept window, rendered as shaded-out regions + draggable handles. */
+  trim?: Trim;
+  onTrimChange?: (trim: Trim) => void;
 }) {
   const { t, playing, duration, speed } = clock;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -90,7 +100,7 @@ export function ReplayPlayer({
       </div>
 
       {/* Timeline */}
-      <Timeline bug={bug} clock={clock} />
+      <Timeline bug={bug} clock={clock} trim={trim} onTrimChange={onTrimChange} />
 
       {/* Transport controls */}
       <div className="flex h-11 shrink-0 items-center gap-1 border-t border-border/60 px-2.5">
@@ -137,11 +147,23 @@ export function ReplayPlayer({
   );
 }
 
-/** The scrubbable timeline: progress fill, click/nav/error ticks, and marker flags above. */
-function Timeline({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
+/** The scrubbable timeline: progress fill, click/nav/error ticks, marker flags above, and
+ *  (in draft mode) trim handles with shaded dropped regions. */
+function Timeline({
+  bug,
+  clock,
+  trim,
+  onTrimChange,
+}: {
+  bug: Bug;
+  clock: ReplayClock;
+  trim?: Trim;
+  onTrimChange?: (trim: Trim) => void;
+}) {
   const { t, duration } = clock;
   const trackRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
+  const trimDrag = useRef<"in" | "out" | null>(null);
   const [hoverT, setHoverT] = useState<number | null>(null);
 
   const ticks = useMemo(() => {
@@ -186,10 +208,17 @@ function Timeline({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
         }}
         onPointerMove={(e) => {
           setHoverT(timeFromPointer(e));
-          if (dragging.current) clock.seek(timeFromPointer(e));
+          if (trimDrag.current && trim && onTrimChange) {
+            const nt = timeFromPointer(e);
+            if (trimDrag.current === "in") onTrimChange({ in: Math.min(nt, trim.out - 500), out: trim.out });
+            else onTrimChange({ in: trim.in, out: Math.max(nt, trim.in + 500) });
+          } else if (dragging.current) {
+            clock.seek(timeFromPointer(e));
+          }
         }}
         onPointerUp={() => {
           dragging.current = false;
+          trimDrag.current = null;
         }}
         onPointerLeave={() => setHoverT(null)}
         onKeyDown={(e) => {
@@ -218,6 +247,43 @@ function Timeline({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
             />
           </button>
         ))}
+
+        {/* trimmed-out shading + handles */}
+        {trim && (
+          <>
+            {trim.in > 0 && (
+              <div
+                className="absolute inset-y-0 left-0 rounded-l bg-foreground/8"
+                style={{ width: `${(trim.in / duration) * 100}%` }}
+              />
+            )}
+            {trim.out < duration && (
+              <div
+                className="absolute inset-y-0 right-0 rounded-r bg-foreground/8"
+                style={{ width: `${((duration - trim.out) / duration) * 100}%` }}
+              />
+            )}
+            {(["in", "out"] as const).map((which) => (
+              <div
+                key={which}
+                role="slider"
+                aria-label={which === "in" ? "Trim start" : "Trim end"}
+                aria-valuemin={0}
+                aria-valuemax={Math.round(duration / 1000)}
+                aria-valuenow={Math.round(trim[which] / 1000)}
+                className="absolute top-1/2 z-20 h-5 w-[7px] -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-[3px] border border-card bg-amber-500 shadow-sm"
+                style={{ left: `${(trim[which] / duration) * 100}%` }}
+                title={`${which === "in" ? "Trim start" : "Trim end"} · ${formatOffset(trim[which])} — drag to adjust`}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  trimDrag.current = which;
+                  (e.currentTarget.parentElement as HTMLElement | null)?.setPointerCapture(e.pointerId);
+                  clock.pause();
+                }}
+              />
+            ))}
+          </>
+        )}
 
         {/* track */}
         <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted">

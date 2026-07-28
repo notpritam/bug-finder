@@ -303,6 +303,52 @@ function SettingsScenario({ d }: { d: Derived }) {
   );
 }
 
+/* --- scenario: generic (real extension captures — no page pixels, a stand-in wireframe) --- */
+
+function GenericScenario({ d, url }: { d: Derived; url: string }) {
+  let host = "captured page";
+  try {
+    host = new URL(url).host;
+  } catch {
+    /* keep fallback */
+  }
+  const failed = d.errors.length > 0;
+  return (
+    <div className="flex h-full flex-col bg-zinc-50">
+      <TopNav brand={host} links={["Home", "Docs", "Account"]} />
+      <div className="flex-1 space-y-4 p-6">
+        <div className="space-y-2">
+          <Line w="34%" className="h-3 bg-zinc-300" />
+          <Line w="58%" />
+          <Line w="46%" />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-2 rounded-lg border border-zinc-200 bg-white p-3">
+              <div className="h-14 rounded-md bg-zinc-100" />
+              <Line w="70%" className="bg-zinc-300" />
+              <Line w="45%" />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2 rounded-lg border border-zinc-200 bg-white p-3">
+          {[64, 52, 58, 40].map((w, i) => (
+            <Line key={i} w={`${w}%`} />
+          ))}
+        </div>
+        <p className="pt-1 text-center text-[9.5px] text-zinc-300">
+          Wireframe stand-in — pixel-accurate replay lands with the recording backend
+        </p>
+      </div>
+      {failed && (
+        <div className="absolute bottom-4 right-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 font-mono text-[9.5px] text-red-600 shadow-sm">
+          {d.errors[d.errors.length - 1].message.split("\n")[0].slice(0, 80)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* --- stage overlays (cursor, ripples, element highlight) ------------------ */
 
 function cursorAt(replay: ReplayEvent[], t: number): { x: number; y: number } {
@@ -341,6 +387,7 @@ export function MockPage({
       {bug.scenario === "checkout" && <CheckoutScenario d={d} />}
       {bug.scenario === "dashboard" && <DashboardScenario d={d} />}
       {bug.scenario === "settings" && <SettingsScenario d={d} />}
+      {bug.scenario === "generic" && <GenericScenario d={d} url={d.url} />}
 
       {/* picked-element spotlight */}
       {highlightRect && (

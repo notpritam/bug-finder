@@ -110,8 +110,8 @@ export interface Bug {
   updatedAt: number;
   /** Recording window duration in ms. */
   durationMs: number;
-  /** Which mock scenario the simulated replay renders. */
-  scenario: "checkout" | "dashboard" | "settings";
+  /** Which mock scenario the simulated replay renders ("generic" = a real extension capture). */
+  scenario: "checkout" | "dashboard" | "settings" | "generic";
   replay: ReplayEvent[];
   markers: BugMarker[];
   visits: BugVisit[];
@@ -121,4 +121,29 @@ export interface Bug {
   environment: BugEnvironment;
   notes?: string;
   events: BugEvent[];
+}
+
+/** A captured session awaiting review — what the extension hands off before a bug exists.
+ *  The reporter reviews the replay, trims it, adds flags, fills the form, then submits. */
+export interface Draft {
+  id: string;
+  createdAt: number;
+  pageUrl: string;
+  pageTitle: string;
+  durationMs: number;
+  scenario: Bug["scenario"];
+  replay: ReplayEvent[];
+  console: ConsoleEntry[];
+  network: NetEntry[];
+  pickedElements: PickedElement[];
+  markers: BugMarker[];
+  visits: BugVisit[];
+  environment: BugEnvironment;
+  notes?: string;
+  /** Kept window of the recording — events outside are dropped on submit. */
+  trim?: { in: number; out: number };
+  title?: string;
+  description?: string;
+  severity?: BugSeverity;
+  tags?: string[];
 }
