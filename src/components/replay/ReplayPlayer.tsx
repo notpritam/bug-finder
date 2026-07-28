@@ -10,10 +10,14 @@ import {
   RotateCcw,
   RotateCw,
 } from "lucide-react";
+import { lazy, Suspense } from "react";
 import type { Bug } from "@/lib/types";
 import { cn, formatOffset, pathOf } from "@/lib/utils";
 import { MockPage } from "./MockPage";
 import type { ReplayClock } from "./useReplayClock";
+
+// rrweb (~250 KB) only loads when a bug actually has a pixel recording.
+const RrwebStage = lazy(() => import("./RrwebStage").then((m) => ({ default: m.RrwebStage })));
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -110,11 +114,24 @@ export function ReplayPlayer({
         </button>
       </div>
 
-      {/* Stage — letterboxed to the recorded aspect ratio */}
+      {/* Stage — letterboxed to the recorded aspect ratio. Real rrweb captures render the
+          actual page pixels; dummy scenarios render the wireframe simulation. */}
       <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center bg-zinc-200/80">
         {box && (
           <div className="relative overflow-hidden bg-zinc-100 shadow-sm" style={{ width: box.w, height: box.h }}>
-            <MockPage bug={bug} t={t} highlightRect={highlightRect} />
+            {bug.rrweb && bug.rrweb.length > 1 ? (
+              <Suspense fallback={<div className="grid h-full place-items-center text-[12px] text-muted-foreground">Loading replay…</div>}>
+                <RrwebStage
+                  events={bug.rrweb}
+                  offset={bug.rrwebOffset ?? 0}
+                  clock={clock}
+                  scale={box.w / (vp?.w || box.w)}
+                  highlightRect={highlightRect}
+                />
+              </Suspense>
+            ) : (
+              <MockPage bug={bug} t={t} highlightRect={highlightRect} />
+            )}
           </div>
         )}
         {!playing && t === 0 && (
@@ -166,10 +183,25 @@ export function ReplayPlayer({
         <span className="ml-3 hidden truncate font-mono text-[10.5px] text-muted-foreground/70 sm:block">
           {pathOf(currentUrl)}
         </span>
+        {/* tick legend — decodes the timeline colors at a glance */}
+        <span className="ml-auto hidden items-center gap-2.5 text-[10px] text-muted-foreground xl:flex">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-[3px] rounded-full" style={{ background: "var(--ev-click)" }} /> Click
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-[3px] rounded-full" style={{ background: "var(--ev-nav)" }} /> Nav
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-[3px] rounded-full" style={{ background: "var(--ev-error)" }} /> Error
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Flag className="size-2.5" style={{ color: "var(--ev-marker)" }} fill="currentColor" /> Flag
+          </span>
+        </span>
         <button
           type="button"
           onClick={() => clock.setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
-          className="ml-auto rounded-lg px-2 py-1 font-mono text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="rounded-lg px-2 py-1 font-mono text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-xl:ml-auto"
           title="Playback speed (click to cycle)"
         >
           {speed}×

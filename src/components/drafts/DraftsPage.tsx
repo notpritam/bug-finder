@@ -1,5 +1,6 @@
 // ABOUTME: The drafts list — captured sessions waiting for review. Click one to review & submit.
-import { Clapperboard, FileVideo, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Clapperboard, FileVideo, Sparkles, Trash2 } from "lucide-react";
 import type { Draft } from "@/lib/types";
 import { formatDuration, hostOf, relativeTime } from "@/lib/utils";
 
@@ -12,13 +13,22 @@ export function DraftsPage({
   onOpen: (id: string) => void;
   onDiscard: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background px-8 py-8">
       <div className="mx-auto w-full">
-        <div className="mb-5 flex items-center gap-3">
+        <div className="mb-5 flex flex-wrap items-center gap-3">
           <FileVideo className="size-5 text-primary" />
           <h1 className="text-[20px] font-bold tracking-tight">Drafts</h1>
           <p className="text-[12px] text-muted-foreground">Recordings from the extension, waiting for review</p>
+          <button
+            type="button"
+            onClick={() => navigate("/demo-capture")}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-[12px] font-semibold text-foreground shadow-card transition hover:bg-accent"
+            title="Records a real rrweb session of a demo page right now, then opens it for review"
+          >
+            <Sparkles className="size-3.5" /> Record a demo capture
+          </button>
         </div>
 
         {drafts.length === 0 ? (
@@ -26,7 +36,11 @@ export function DraftsPage({
             <p className="text-[13.5px] font-semibold text-foreground">No drafts yet</p>
             <p className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
               Record a bug with the Bug Finder extension — when you hit <b>Stop &amp; review</b>, the capture lands
-              here so you can trim it, flag the key moments, and submit it as a bug.
+              here so you can trim it, flag the key moments, and submit it as a bug. Or try{" "}
+              <button type="button" onClick={() => navigate("/demo-capture")} className="font-semibold text-foreground underline">
+                a live demo capture
+              </button>{" "}
+              right now — it records a real session of a sample page.
             </p>
           </div>
         ) : (

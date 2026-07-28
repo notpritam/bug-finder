@@ -53,6 +53,7 @@ export function DraftReview({
       environment: draft.environment,
       notes: draft.notes,
       events: [],
+      rrweb: draft.rrweb,
     }),
     [draft],
   );

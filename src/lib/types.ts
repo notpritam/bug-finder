@@ -121,6 +121,12 @@ export interface Bug {
   environment: BugEnvironment;
   notes?: string;
   events: BugEvent[];
+  /** Real rrweb recording (pixel-accurate replay) — present on bugs captured by the extension.
+   *  When set, the player renders the rrweb Replayer instead of the wireframe simulation. */
+  rrweb?: unknown[];
+  /** Playback offset into the rrweb recording (ms) — set when the draft was trimmed, since the
+   *  rrweb event stream keeps its full length (the initial snapshot lives at the start). */
+  rrwebOffset?: number;
 }
 
 /** A captured session awaiting review — what the extension hands off before a bug exists.
@@ -140,6 +146,8 @@ export interface Draft {
   visits: BugVisit[];
   environment: BugEnvironment;
   notes?: string;
+  /** Real rrweb recording from the extension, when present. */
+  rrweb?: unknown[];
   /** Kept window of the recording — events outside are dropped on submit. */
   trim?: { in: number; out: number };
   title?: string;

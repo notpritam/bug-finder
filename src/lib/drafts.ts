@@ -3,49 +3,59 @@
 import type { Bug, BugSeverity, Draft, ReplayEvent } from "./types";
 import { BUGS, ME } from "./data";
 
+import { idb } from "./store";
+
 const DRAFTS_KEY = "bf.drafts";
 const SUBMITTED_KEY = "bf.submitted";
 const SEEDED_KEY = "bf.drafts.seeded";
 
-export function loadDrafts(): Draft[] {
+/** Async load from IndexedDB, migrating any pre-IDB localStorage payloads on first run. */
+export async function loadDrafts(): Promise<Draft[]> {
   try {
-    const raw = localStorage.getItem(DRAFTS_KEY);
-    const drafts: Draft[] = raw ? JSON.parse(raw) : [];
-    if (drafts.length === 0 && !localStorage.getItem(SEEDED_KEY)) {
-      localStorage.setItem(SEEDED_KEY, "1");
-      const demo = demoDraft();
-      saveDrafts([demo]);
-      return [demo];
+    const legacy = localStorage.getItem(DRAFTS_KEY);
+    if (legacy) {
+      const parsed: Draft[] = JSON.parse(legacy);
+      for (const d of parsed) await idb.put("drafts", d);
+      localStorage.removeItem(DRAFTS_KEY);
     }
-    return drafts;
   } catch {
-    return [];
+    /* legacy payload unreadable — skip */
   }
+  const drafts = await idb.getAll<Draft>("drafts");
+  if (drafts.length === 0 && !localStorage.getItem(SEEDED_KEY)) {
+    localStorage.setItem(SEEDED_KEY, "1");
+    const demo = demoDraft();
+    await idb.put("drafts", demo);
+    return [demo];
+  }
+  return drafts.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function saveDrafts(drafts: Draft[]) {
-  try {
-    localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
-  } catch {
-    /* quota — drop oldest big payloads silently */
-  }
+export function persistDraft(draft: Draft) {
+  void idb.put("drafts", draft);
 }
 
-export function loadSubmittedBugs(): Bug[] {
-  try {
-    const raw = localStorage.getItem(SUBMITTED_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+export function removeDraft(id: string) {
+  void idb.delete("drafts", id);
 }
 
-export function saveSubmittedBugs(bugs: Bug[]) {
+export async function loadSubmittedBugs(): Promise<Bug[]> {
   try {
-    localStorage.setItem(SUBMITTED_KEY, JSON.stringify(bugs));
+    const legacy = localStorage.getItem(SUBMITTED_KEY);
+    if (legacy) {
+      const parsed: Bug[] = JSON.parse(legacy);
+      for (const b of parsed) await idb.put("bugs", b);
+      localStorage.removeItem(SUBMITTED_KEY);
+    }
   } catch {
-    /* ignore */
+    /* skip */
   }
+  const bugs = await idb.getAll<Bug>("bugs");
+  return bugs.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function persistSubmittedBug(bug: Bug) {
+  void idb.put("bugs", bug);
 }
 
 /** The extension's DraftPayload → our Draft. Shapes already align; fill in dashboard-only fields. */
@@ -76,6 +86,7 @@ export function draftFromExtension(payload: Record<string, unknown>): Draft {
       memoryGb: env.memoryGb,
     },
     notes: payload.notes ? String(payload.notes) : undefined,
+    rrweb: Array.isArray(payload.rrweb) && payload.rrweb.length > 1 ? (payload.rrweb as unknown[]) : undefined,
   };
 }
 
@@ -135,6 +146,10 @@ export function bugFromDraft(draft: Draft, existing: Bug[]): Bug {
     environment: draft.environment,
     notes: draft.notes,
     events: [{ id: "e0", actor: ME.name, kind: "created", detail: "reported this bug via the extension", at: now }],
+    // The rrweb stream keeps its full length (the DOM snapshot lives at the start); the
+    // trim start becomes a playback offset instead.
+    rrweb: draft.rrweb,
+    rrwebOffset: draft.rrweb ? t0 : undefined,
   };
 }
 

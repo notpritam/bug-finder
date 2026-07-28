@@ -2,10 +2,12 @@
 // ABOUTME: (the PostHog-style core), then description, reporter notes, and the bug's history.
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Clock, ExternalLink, Link2, StickyNote } from "lucide-react";
-import type { Bug, BugStatus } from "@/lib/types";
+import { ArrowLeft, Clock, ExternalLink, Link2, Send, StickyNote } from "lucide-react";
+import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
+import { USERS, ME } from "@/lib/data";
 import { cn, formatDateTime, formatDuration, hostOf, relativeTime } from "@/lib/utils";
 import {
+  BUG_SEVERITY_ORDER,
   BUG_STATUS_META,
   BUG_STATUS_ORDER,
   BugSeverityPill,
@@ -20,10 +22,16 @@ export function BugDetail({
   bug,
   onBack,
   onStatusChange,
+  onSeverityChange,
+  onAssigneeChange,
+  onComment,
 }: {
   bug: Bug;
   onBack: () => void;
   onStatusChange: (id: string, status: BugStatus) => void;
+  onSeverityChange: (id: string, severity: BugSeverity) => void;
+  onAssigneeChange: (id: string, assignee: Reporter | null) => void;
+  onComment: (id: string, body: string) => void;
 }) {
   const clock = useReplayClock(bug.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
@@ -93,7 +101,7 @@ export function BugDetail({
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-[12px] font-medium tracking-wide text-muted-foreground">{bug.humanId}</span>
             <StatusSelect status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
-            <BugSeverityPill severity={bug.severity} />
+            <SeveritySelect severity={bug.severity} onChange={(s) => onSeverityChange(bug.id, s)} />
             <BugTagChips tags={bug.tags} />
             <span className="ml-auto flex items-center gap-3 text-[11.5px] text-muted-foreground">
               <span className="inline-flex items-center gap-1" title={formatDateTime(bug.createdAt)}>
@@ -116,14 +124,31 @@ export function BugDetail({
               Reported by <span className="font-medium text-foreground">{bug.reporter.name}</span>
             </span>
             <span className="inline-flex items-center gap-1.5">
-              {bug.assignee ? (
-                <>
-                  <UserAvatar name={bug.assignee.name} seed={bug.assignee.id} size={20} />
-                  Assigned to <span className="font-medium text-foreground">{bug.assignee.name}</span>
-                </>
-              ) : (
-                <span className="italic">Unassigned</span>
-              )}
+              {bug.assignee && <UserAvatar name={bug.assignee.name} seed={bug.assignee.id} size={20} />}
+              <label className="relative inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-accent">
+                {bug.assignee ? (
+                  <>
+                    Assigned to <span className="font-medium text-foreground">{bug.assignee.name}</span>
+                  </>
+                ) : (
+                  <span className="italic">Unassigned — assign ▾</span>
+                )}
+                <select
+                  value={bug.assignee?.id ?? ""}
+                  onChange={(e) =>
+                    onAssigneeChange(bug.id, USERS.find((u) => u.id === e.target.value) ?? null)
+                  }
+                  aria-label="Change assignee"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                >
+                  <option value="">Unassigned</option>
+                  {USERS.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </span>
             <span>
               Recording <span className="font-medium text-foreground">{formatDuration(bug.durationMs)}</span>
@@ -166,15 +191,18 @@ export function BugDetail({
             )}
           </Card>
 
-          <Card title="History">
-            <ol className="space-y-3">
+          <Card title="History & comments">
+            <CommentComposer onSubmit={(body) => onComment(bug.id, body)} />
+            <ol className="mt-3 space-y-3">
               {[...bug.events].sort((a, b) => b.at - a.at).map((ev) => (
                 <li key={ev.id} className="flex gap-2.5">
                   <UserAvatar name={ev.actor} seed={ev.actor} size={22} />
                   <div className="min-w-0 flex-1">
                     <p className="text-[12px] leading-snug">
                       <span className="font-semibold">{ev.actor}</span>{" "}
-                      <span className="text-foreground/80">{ev.detail}</span>
+                      <span className={cn(ev.kind === "comment" ? "text-foreground/90" : "text-foreground/70")}>
+                        {ev.detail}
+                      </span>
                     </p>
                     <p className="mt-0.5 text-[10.5px] text-muted-foreground">{relativeTime(ev.at)}</p>
                   </div>
@@ -194,6 +222,71 @@ function Card({ title, className, children }: { title: string; className?: strin
       <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">{title}</h2>
       {children}
     </section>
+  );
+}
+
+/** The comment box — Enter posts, Shift+Enter for a newline. */
+function CommentComposer({ onSubmit }: { onSubmit: (body: string) => void }) {
+  const [body, setBody] = useState("");
+  const post = () => {
+    const text = body.trim();
+    if (!text) return;
+    onSubmit(text);
+    setBody("");
+  };
+  return (
+    <div className="flex items-start gap-2">
+      <UserAvatar name={ME.name} seed={ME.id} size={22} />
+      <div className="relative flex-1">
+        <textarea
+          value={body}
+          placeholder="Add a comment… (↵ to post)"
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              post();
+            }
+          }}
+          rows={2}
+          className="w-full resize-none rounded-lg border border-border/60 bg-card p-2 pr-9 text-[12px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50"
+        />
+        <button
+          type="button"
+          onClick={post}
+          disabled={!body.trim()}
+          className={cn(
+            "absolute bottom-2.5 right-2 grid size-6 place-items-center rounded-md transition-colors",
+            body.trim() ? "bg-primary text-primary-foreground hover:opacity-90" : "text-muted-foreground/40",
+          )}
+          title="Post comment"
+        >
+          <Send className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Severity as a native-select pill. */
+function SeveritySelect({ severity, onChange }: { severity: BugSeverity; onChange: (s: BugSeverity) => void }) {
+  return (
+    <label className="relative inline-flex cursor-pointer">
+      <BugSeverityPill severity={severity} />
+      <select
+        value={severity}
+        onChange={(e) => onChange(e.target.value as BugSeverity)}
+        aria-label="Change severity"
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        {BUG_SEVERITY_ORDER.map((s) => (
+          <option key={s} value={s}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

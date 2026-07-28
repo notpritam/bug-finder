@@ -1,5 +1,5 @@
-// ABOUTME: App shell + URL routing — every screen has a shareable URL (/bugs/:view, /bug/:humanId,
-// ABOUTME: /drafts/:id) and browser back/forward works. Data still lives in memory + localStorage.
+// ABOUTME: App shell + URL routing — every screen has a shareable URL. Drafts and submitted bugs
+// ABOUTME: persist in IndexedDB (rrweb recordings are large); seeded demo bugs stay in memory.
 import { useEffect, useState } from "react";
 import {
   BrowserRouter,
@@ -10,23 +10,26 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-import type { BugStatus, Draft } from "@/lib/types";
-import { BUGS } from "@/lib/data";
+import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
+import { BUGS, ME } from "@/lib/data";
 import {
   bugFromDraft,
   draftFromExtension,
   loadDrafts,
   loadSubmittedBugs,
-  saveDrafts,
-  saveSubmittedBugs,
+  persistDraft,
+  persistSubmittedBug,
+  removeDraft,
 } from "@/lib/drafts";
 import { Sidebar, type SidebarView } from "@/components/shell/Sidebar";
 import { BugsPage } from "@/components/bugs/BugsPage";
 import { BugDetail } from "@/components/bugs/BugDetail";
+import { lazy, Suspense } from "react";
 import { DraftsPage } from "@/components/drafts/DraftsPage";
 import { DraftReview } from "@/components/drafts/DraftReview";
 
-/** URL path segment ⇄ sidebar view. */
+const DemoCapture = lazy(() => import("@/components/drafts/DemoCapture").then((m) => ({ default: m.DemoCapture })));
+
 const VIEW_TO_PATH: Record<SidebarView, string> = {
   all: "/bugs",
   open: "/bugs/open",
@@ -42,12 +45,25 @@ const PATH_TO_VIEW: Record<string, SidebarView> = {
   mine: "mine",
 };
 
+const isSeed = (bug: Bug) => BUGS.some((seed) => seed.id === bug.id);
+
 function Shell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [bugs, setBugs] = useState(() => [...loadSubmittedBugs(), ...BUGS]);
-  const [drafts, setDrafts] = useState<Draft[]>(loadDrafts);
+  const [bugs, setBugs] = useState<Bug[]>(BUGS);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  // Deep links to persisted bugs/drafts must wait for IndexedDB before deciding "not found".
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrate persisted state (IndexedDB) once on mount.
+  useEffect(() => {
+    void Promise.all([loadSubmittedBugs(), loadDrafts()]).then(([submitted, storedDrafts]) => {
+      setBugs([...submitted, ...BUGS]);
+      setDrafts(storedDrafts);
+      setHydrated(true);
+    });
+  }, []);
 
   // Captures arriving from the extension bridge become drafts and open for review.
   useEffect(() => {
@@ -57,9 +73,8 @@ function Shell() {
       window.postMessage({ source: "bugfinder-dashboard", type: "draft-received" }, "*");
       setDrafts((prev) => {
         if (prev.some((d) => d.id === incoming.id)) return prev;
-        const next = [incoming, ...prev];
-        saveDrafts(next);
-        return next;
+        persistDraft(incoming);
+        return [incoming, ...prev];
       });
       navigate(`/drafts/${incoming.id}`);
     };
@@ -67,52 +82,66 @@ function Shell() {
     return () => window.removeEventListener("message", onMessage);
   }, [navigate]);
 
-  // Sidebar highlight from the URL.
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
     seg[0] === "drafts" ? "drafts" : seg[0] === "bugs" ? (PATH_TO_VIEW[seg[1]] ?? "all") : "all";
 
-  const persistSubmitted = (next: typeof bugs) =>
-    saveSubmittedBugs(next.filter((b) => !BUGS.some((seed) => seed.id === b.id)));
-
-  const changeStatus = (id: string, status: BugStatus) => {
-    setBugs((prev) => {
-      const next = prev.map((b) => (b.id === id ? { ...b, status, updatedAt: Date.now() } : b));
-      persistSubmitted(next);
-      return next;
-    });
+  /** Mutate one bug, appending a history event, persisting if it's a submitted (non-seed) bug. */
+  const amendBug = (id: string, patch: Partial<Bug>, historyDetail: string | null) => {
+    setBugs((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const next: Bug = {
+          ...b,
+          ...patch,
+          updatedAt: Date.now(),
+          events: historyDetail
+            ? [
+                ...b.events,
+                {
+                  id: `e-${Date.now().toString(36)}`,
+                  actor: ME.name,
+                  kind: patch.status ? "status" : patch.assignee !== undefined ? "assigned" : "comment",
+                  detail: historyDetail,
+                  at: Date.now(),
+                },
+              ]
+            : b.events,
+        };
+        if (!isSeed(next)) persistSubmittedBug(next);
+        return next;
+      }),
+    );
   };
 
+  const changeStatus = (id: string, status: BugStatus) =>
+    amendBug(id, { status }, `changed status to ${status.replace("_", " ")}`);
+  const changeSeverity = (id: string, severity: BugSeverity) =>
+    amendBug(id, { severity }, `set severity to ${severity}`);
+  const changeAssignee = (id: string, assignee: Reporter | null) =>
+    amendBug(id, { assignee }, assignee ? `assigned to ${assignee.name}` : "unassigned");
+  const addComment = (id: string, body: string) => amendBug(id, {}, body);
+
   const updateDraft = (draft: Draft) => {
-    setDrafts((prev) => {
-      const next = prev.map((d) => (d.id === draft.id ? draft : d));
-      saveDrafts(next);
-      return next;
-    });
+    persistDraft(draft);
+    setDrafts((prev) => prev.map((d) => (d.id === draft.id ? draft : d)));
   };
 
   const discardDraft = (id: string) => {
-    setDrafts((prev) => {
-      const next = prev.filter((d) => d.id !== id);
-      saveDrafts(next);
-      return next;
-    });
+    removeDraft(id);
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
     navigate("/drafts");
   };
 
   const submitDraft = (draft: Draft) => {
     const bug = bugFromDraft(draft, bugs);
-    setBugs((prev) => {
-      const next = [bug, ...prev];
-      persistSubmitted(next);
-      return next;
-    });
-    setDrafts((prev) => {
-      const next = prev.filter((d) => d.id !== draft.id);
-      saveDrafts(next);
-      return next;
-    });
+    persistSubmittedBug(bug);
+    setBugs((prev) => [bug, ...prev]);
+    // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
+    // whose not-found redirect would win the race and land on /drafts instead of the bug.
     navigate(`/bug/${bug.humanId}`, { replace: true });
+    removeDraft(draft.id);
+    setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
   };
 
   return (
@@ -128,11 +157,20 @@ function Shell() {
       <main className="flex min-w-0 flex-1 flex-col">
         <Routes>
           <Route path="/" element={<Navigate to="/bugs" replace />} />
+          <Route path="/bugs/:view?" element={<BugsRoute bugs={bugs} onStatusChange={changeStatus} />} />
           <Route
-            path="/bugs/:view?"
-            element={<BugsRoute bugs={bugs} onStatusChange={changeStatus} />}
+            path="/bug/:humanId"
+            element={
+              <BugRoute
+                hydrated={hydrated}
+                bugs={bugs}
+                onStatusChange={changeStatus}
+                onSeverityChange={changeSeverity}
+                onAssigneeChange={changeAssignee}
+                onComment={addComment}
+              />
+            }
           />
-          <Route path="/bug/:humanId" element={<BugRoute bugs={bugs} onStatusChange={changeStatus} />} />
           <Route
             path="/drafts"
             element={<DraftsPage drafts={drafts} onOpen={(id) => navigate(`/drafts/${id}`)} onDiscard={discardDraft} />}
@@ -140,7 +178,21 @@ function Shell() {
           <Route
             path="/drafts/:id"
             element={
-              <DraftRoute drafts={drafts} onChange={updateDraft} onSubmit={submitDraft} onDiscard={discardDraft} />
+              <DraftRoute
+                hydrated={hydrated}
+                drafts={drafts}
+                onChange={updateDraft}
+                onSubmit={submitDraft}
+                onDiscard={discardDraft}
+              />
+            }
+          />
+          <Route
+            path="/demo-capture"
+            element={
+              <Suspense fallback={null}>
+                <DemoCapture />
+              </Suspense>
             }
           />
           <Route path="*" element={<Navigate to="/bugs" replace />} />
@@ -154,7 +206,7 @@ function BugsRoute({
   bugs,
   onStatusChange,
 }: {
-  bugs: ReturnType<typeof loadSubmittedBugs>;
+  bugs: Bug[];
   onStatusChange: (id: string, status: BugStatus) => void;
 }) {
   const navigate = useNavigate();
@@ -175,29 +227,47 @@ function BugsRoute({
 }
 
 function BugRoute({
+  hydrated,
   bugs,
   onStatusChange,
+  onSeverityChange,
+  onAssigneeChange,
+  onComment,
 }: {
-  bugs: ReturnType<typeof loadSubmittedBugs>;
+  hydrated: boolean;
+  bugs: Bug[];
   onStatusChange: (id: string, status: BugStatus) => void;
+  onSeverityChange: (id: string, severity: BugSeverity) => void;
+  onAssigneeChange: (id: string, assignee: Reporter | null) => void;
+  onComment: (id: string, body: string) => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { humanId } = useParams();
   const bug = bugs.find((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
+  if (!bug && !hydrated) return null;
   if (!bug) return <Navigate to="/bugs" replace />;
-  // Back keeps the caller's filters/search when we navigated here in-app; a deep link falls
-  // back to the plain list (going -1 there would leave the site).
   const back = () => (location.key !== "default" ? navigate(-1) : navigate("/bugs"));
-  return <BugDetail bug={bug} onBack={back} onStatusChange={onStatusChange} />;
+  return (
+    <BugDetail
+      bug={bug}
+      onBack={back}
+      onStatusChange={onStatusChange}
+      onSeverityChange={onSeverityChange}
+      onAssigneeChange={onAssigneeChange}
+      onComment={onComment}
+    />
+  );
 }
 
 function DraftRoute({
+  hydrated,
   drafts,
   onChange,
   onSubmit,
   onDiscard,
 }: {
+  hydrated: boolean;
   drafts: Draft[];
   onChange: (d: Draft) => void;
   onSubmit: (d: Draft) => void;
@@ -206,6 +276,7 @@ function DraftRoute({
   const navigate = useNavigate();
   const { id } = useParams();
   const draft = drafts.find((d) => d.id === id);
+  if (!draft && !hydrated) return null;
   if (!draft) return <Navigate to="/drafts" replace />;
   return (
     <DraftReview
