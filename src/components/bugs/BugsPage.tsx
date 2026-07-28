@@ -1,6 +1,7 @@
 // ABOUTME: The bugs list — search + status/severity filter chips over rows of filed bugs,
 // ABOUTME: each with replay length, error count, reporter, and inline status.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, Bug as BugIcon, Clapperboard, Search } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
@@ -35,9 +36,25 @@ export function BugsPage({
   onOpenBug: (id: string) => void;
   onStatusChange: (id: string, status: BugStatus) => void;
 }) {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
-  const [search, setSearch] = useState("");
+  // Filters + search live in the URL so any filtered view is shareable.
+  const [params, setParams] = useSearchParams();
+  const statusFilter = (params.get("status") as StatusFilter) ?? "all";
+  const severityFilter = (params.get("severity") as SeverityFilter) ?? "all";
+  const search = params.get("q") ?? "";
+  const setParam = (key: string, value: string) => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === "all" || value === "") next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+  const setStatusFilter = (v: StatusFilter) => setParam("status", v);
+  const setSeverityFilter = (v: SeverityFilter) => setParam("severity", v);
+  const setSearch = (v: string) => setParam("q", v);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const activeRowRef = useRef<HTMLLIElement | null>(null);

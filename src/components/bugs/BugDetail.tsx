@@ -1,6 +1,7 @@
 // ABOUTME: A single bug — header with status/severity/assignee, the replay player + inspector rail
 // ABOUTME: (the PostHog-style core), then description, reporter notes, and the bug's history.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowLeft, Clock, ExternalLink, Link2, StickyNote } from "lucide-react";
 import type { Bug, BugStatus } from "@/lib/types";
 import { cn, formatDateTime, formatDuration, hostOf, relativeTime } from "@/lib/utils";
@@ -27,6 +28,33 @@ export function BugDetail({
   const clock = useReplayClock(bug.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
   const highlightRect = selectedPick != null ? (bug.pickedElements[selectedPick]?.rect ?? null) : null;
+
+  // Shareable playhead: ?t=12.5 seeks on load; pausing/seeking keeps the URL in sync (replace,
+  // so scrubbing doesn't pollute history).
+  const [params, setParams] = useSearchParams();
+  const seededT = useRef(false);
+  useEffect(() => {
+    if (seededT.current) return;
+    seededT.current = true;
+    const t = Number(params.get("t"));
+    if (Number.isFinite(t) && t > 0) clock.seek(Math.min(t * 1000, bug.durationMs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (clock.playing) return;
+    const timer = setTimeout(() => {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (clock.t > 0) next.set("t", (clock.t / 1000).toFixed(1));
+          else next.delete("t");
+          return next;
+        },
+        { replace: true },
+      );
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [clock.t, clock.playing, setParams]);
 
   // Space toggles playback anywhere on the page (except in form fields).
   useEffect(() => {
