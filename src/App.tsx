@@ -260,9 +260,24 @@ function BugRoute({
   if (!bug && !hydrated) return null;
   if (!bug) return <Navigate to="/bugs" replace />;
   const back = () => (location.key !== "default" ? navigate(-1) : navigate("/bugs"));
+  const host = (u: string) => {
+    try {
+      return new URL(u).host;
+    } catch {
+      return u;
+    }
+  };
+  const related = bugs
+    .filter(
+      (b) =>
+        b.id !== bug.id &&
+        (b.tags.some((t) => bug.tags.includes(t)) || host(b.pageUrl) === host(bug.pageUrl)),
+    )
+    .slice(0, 4);
   return (
     <BugDetail
       bug={bug}
+      relatedBugs={related}
       onBack={back}
       onStatusChange={onStatusChange}
       onSeverityChange={onSeverityChange}

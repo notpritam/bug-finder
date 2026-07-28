@@ -1,17 +1,16 @@
 // ABOUTME: A single bug — header with status/severity/assignee, the replay player + inspector rail
 // ABOUTME: (the PostHog-style core), then description, reporter notes, and the bug's history.
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Clock, ExternalLink, Link2, Send, StickyNote } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import { USERS, ME } from "@/lib/data";
-import { cn, formatDateTime, formatDuration, hostOf, relativeTime } from "@/lib/utils";
+import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
 import {
   BUG_SEVERITY_ORDER,
   BUG_STATUS_META,
   BUG_STATUS_ORDER,
   BugSeverityPill,
-  BugTagChips,
   UserAvatar,
 } from "@/components/common/bits";
 import { ReplayPlayer } from "@/components/replay/ReplayPlayer";
@@ -20,6 +19,7 @@ import { InspectorRail } from "./InspectorRail";
 
 export function BugDetail({
   bug,
+  relatedBugs,
   onBack,
   onStatusChange,
   onSeverityChange,
@@ -27,12 +27,23 @@ export function BugDetail({
   onComment,
 }: {
   bug: Bug;
+  /** Bugs sharing a tag or host with this one — the "look here too" trail. */
+  relatedBugs: Bug[];
   onBack: () => void;
   onStatusChange: (id: string, status: BugStatus) => void;
   onSeverityChange: (id: string, severity: BugSeverity) => void;
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
   onComment: (id: string, body: string) => void;
 }) {
+  const navigate = useNavigate();
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyLink = () => {
+    const url = `${location.origin}/bug/${bug.humanId}${clock.t > 0 ? `?t=${(clock.t / 1000).toFixed(1)}` : ""}`;
+    void navigator.clipboard?.writeText(url).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    });
+  };
   const clock = useReplayClock(bug.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
   const highlightRect = selectedPick != null ? (bug.pickedElements[selectedPick]?.rect ?? null) : null;
@@ -102,8 +113,27 @@ export function BugDetail({
             <span className="font-mono text-[12px] font-medium tracking-wide text-muted-foreground">{bug.humanId}</span>
             <StatusSelect status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
             <SeveritySelect severity={bug.severity} onChange={(s) => onSeverityChange(bug.id, s)} />
-            <BugTagChips tags={bug.tags} />
+            {/* tags link to the filtered list */}
+            {bug.tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => navigate(`/bugs?q=${encodeURIComponent(tag)}`)}
+                className="rounded-full bg-secondary px-2 py-px text-[10.5px] font-medium text-secondary-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title={`Show all bugs tagged "${tag}"`}
+              >
+                {tag}
+              </button>
+            ))}
             <span className="ml-auto flex items-center gap-3 text-[11.5px] text-muted-foreground">
+              <button
+                type="button"
+                onClick={copyLink}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+                title="Copy a link to this bug at the current replay position"
+              >
+                <LinkIcon className="size-3.5" /> {linkCopied ? "Copied!" : "Copy link"}
+              </button>
               <span className="inline-flex items-center gap-1" title={formatDateTime(bug.createdAt)}>
                 <Clock className="size-3.5" /> {relativeTime(bug.createdAt)}
               </span>
@@ -176,6 +206,37 @@ export function BugDetail({
           </div>
         </div>
 
+        {/* Key moments — the reporter's flags + auto error markers, one click from any of them */}
+        {bug.markers.length > 0 && (
+          <div className="soft-fade flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-card">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
+              Key moments
+            </span>
+            {[...bug.markers]
+              .sort((a, b) => a.t - b.t)
+              .map((m, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    clock.pause();
+                    clock.seek(m.t);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+                  title="Jump the replay to this moment"
+                >
+                  <Flag
+                    className="size-3"
+                    style={{ color: m.kind === "error" ? "var(--ev-error)" : "var(--ev-marker)" }}
+                    fill="currentColor"
+                  />
+                  <span className="font-mono text-[10.5px] text-muted-foreground">{formatOffset(m.t)}</span>
+                  {m.label ?? "Marker"}
+                </button>
+              ))}
+          </div>
+        )}
+
         {/* Below-the-fold cards */}
         <div className="grid grid-cols-1 gap-4 pb-10 lg:grid-cols-3">
           <Card title="Description" className="lg:col-span-2">
@@ -191,6 +252,30 @@ export function BugDetail({
             )}
           </Card>
 
+          <div className="flex flex-col gap-4">
+          {relatedBugs.length > 0 && (
+            <Card title="Related bugs">
+              <ul className="flex flex-col gap-1.5">
+                {relatedBugs.map((rb) => (
+                  <li key={rb.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/bug/${rb.humanId}`)}
+                      className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-accent"
+                      title={`${rb.humanId} — shares a tag or page with this bug`}
+                    >
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ background: BUG_STATUS_META[rb.status].color }}
+                      />
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{rb.humanId}</span>
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{rb.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card title="History & comments">
             <CommentComposer onSubmit={(body) => onComment(bug.id, body)} />
             <ol className="mt-3 space-y-3">
@@ -210,6 +295,7 @@ export function BugDetail({
               ))}
             </ol>
           </Card>
+          </div>
         </div>
       </div>
     </div>
