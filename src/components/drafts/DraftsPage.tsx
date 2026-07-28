@@ -1,6 +1,6 @@
 // ABOUTME: The drafts list — captured sessions waiting for review. Click one to review & submit.
-import { useNavigate } from "react-router-dom";
-import { Clapperboard, FileVideo, Sparkles, Trash2 } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Clapperboard, FileVideo, Sparkles, Trash2 } from "lucide-react";
 import type { Draft } from "@/lib/types";
 import { formatDuration, hostOf, relativeTime } from "@/lib/utils";
 
@@ -14,9 +14,27 @@ export function DraftsPage({
   onDiscard: (id: string) => void;
 }) {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const submitted = params.get("submitted");
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background px-8 py-8">
       <div className="mx-auto w-full">
+        {submitted && (
+          <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl border border-emerald-300/50 bg-emerald-50 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <p className="text-[13px] font-medium text-foreground">
+              <span className="font-mono font-semibold">{submitted}</span> was submitted anonymously.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/auth")}
+              className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground transition hover:opacity-90"
+              title="Create an account or sign in to view and track filed bugs"
+            >
+              Sign in to track it
+            </button>
+          </div>
+        )}
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <FileVideo className="size-5 text-primary" />
           <h1 className="text-[20px] font-bold tracking-tight">Drafts</h1>

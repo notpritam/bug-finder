@@ -173,8 +173,10 @@ function Shell({
     persistSubmittedBug(bug);
     setBugs((prev) => [bug, ...prev]);
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
-    // whose not-found redirect would win the race and land on /drafts instead of the bug.
-    navigate(`/bug/${bug.humanId}`, { replace: true });
+    // whose not-found redirect would win the race. Guests can't view bugs, so they land
+    // back on Drafts with a filed confirmation instead.
+    if (user) navigate(`/bug/${bug.humanId}`, { replace: true });
+    else navigate(`/drafts?submitted=${bug.humanId}`, { replace: true });
     removeDraft(draft.id);
     setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
   };
@@ -194,11 +196,19 @@ function Shell({
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <Routes>
-          <Route path="/" element={<Navigate to="/bugs" replace />} />
-          <Route path="/bugs/:view?" element={<BugsRoute bugs={bugs} me={user} onStatusChange={changeStatus} />} />
+          <Route path="/" element={<Navigate to={user ? "/bugs" : "/drafts"} replace />} />
+          <Route
+            path="/bugs/:view?"
+            element={
+              user ? <BugsRoute bugs={bugs} me={user} onStatusChange={changeStatus} /> : <Navigate to="/auth" replace />
+            }
+          />
           <Route
             path="/bug/:humanId"
             element={
+              !user ? (
+                <Navigate to="/auth" replace />
+              ) : (
               <BugRoute
                 hydrated={hydrated}
                 bugs={bugs}
@@ -209,6 +219,7 @@ function Shell({
                 onAssigneeChange={changeAssignee}
                 onComment={addComment}
               />
+              )
             }
           />
           <Route
@@ -379,9 +390,9 @@ function AuthGate({ onAuthed }: { onAuthed: (u: AuthUser) => void }) {
     <AuthScreen
       onAuthed={(u) => {
         onAuthed(u);
-        navigate(-1);
+        navigate("/bugs", { replace: true });
       }}
-      onSkip={() => navigate(-1)}
+      onSkip={() => navigate("/drafts", { replace: true })}
     />
   );
 }

@@ -83,22 +83,27 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto scroll-thin px-2.5 py-2">
-        {!collapsed && (
-          <p className="px-2 pb-1.5 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-            Views
-          </p>
+        {/* Bug views require an account — guests only get their drafts. */}
+        {user && (
+          <>
+            {!collapsed && (
+              <p className="px-2 pb-1.5 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+                Views
+              </p>
+            )}
+            {VIEWS.map((v) => (
+              <NavRow
+                key={v.key}
+                collapsed={collapsed}
+                icon={v.icon}
+                label={v.label}
+                count={v.count(bugs, user.id)}
+                active={view === v.key}
+                onClick={() => onView(v.key)}
+              />
+            ))}
+          </>
         )}
-        {VIEWS.map((v) => (
-          <NavRow
-            key={v.key}
-            collapsed={collapsed}
-            icon={v.icon}
-            label={v.label}
-            count={v.count(bugs, user?.id ?? "")}
-            active={view === v.key}
-            onClick={() => onView(v.key)}
-          />
-        ))}
 
         {!collapsed && (
           <p className="px-2 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
@@ -115,21 +120,25 @@ export function Sidebar({
           highlight={draftCount > 0}
         />
 
-        {!collapsed && (
-          <p className="px-2 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-            Coming soon
-          </p>
+        {user && (
+          <>
+            {!collapsed && (
+              <p className="px-2 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+                Coming soon
+              </p>
+            )}
+            <div
+              className={cn(
+                "flex h-9 w-full cursor-not-allowed items-center gap-2.5 rounded-lg px-2 text-[13px] font-medium text-muted-foreground/50",
+                collapsed && "justify-center px-0",
+              )}
+              title="Insights — coming soon"
+            >
+              <LayoutDashboard className="size-[17px]" />
+              {!collapsed && "Insights"}
+            </div>
+          </>
         )}
-        <div
-          className={cn(
-            "flex h-9 w-full cursor-not-allowed items-center gap-2.5 rounded-lg px-2 text-[13px] font-medium text-muted-foreground/50",
-            collapsed && "justify-center px-0",
-          )}
-          title="Insights — coming soon"
-        >
-          <LayoutDashboard className="size-[17px]" />
-          {!collapsed && "Insights"}
-        </div>
       </nav>
 
       <footer className="border-t border-sidebar-border p-2.5">
