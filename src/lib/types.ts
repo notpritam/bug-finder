@@ -124,6 +124,9 @@ export interface Bug {
   /** Real rrweb recording (pixel-accurate replay) — present on bugs captured by the extension.
    *  When set, the player renders the rrweb Replayer instead of the wireframe simulation. */
   rrweb?: unknown[];
+  /** File id of the recording in the storage service — the player fetches it via its
+   *  download URL when `rrweb` isn't inline. Uploaded recordings keep local rows light. */
+  rrwebFileId?: string;
   /** Playback offset into the rrweb recording (ms) — set when the draft was trimmed, since the
    *  rrweb event stream keeps its full length (the initial snapshot lives at the start). */
   rrwebOffset?: number;
@@ -146,8 +149,10 @@ export interface Draft {
   visits: BugVisit[];
   environment: BugEnvironment;
   notes?: string;
-  /** Real rrweb recording from the extension, when present. */
+  /** Real rrweb recording from the extension, when present inline. */
   rrweb?: unknown[];
+  /** Storage-service file id of the recording (uploaded by the extension or demo capture). */
+  rrwebFileId?: string;
   /** Kept window of the recording — events outside are dropped on submit. */
   trim?: { in: number; out: number };
   title?: string;

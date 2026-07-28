@@ -87,6 +87,7 @@ export function draftFromExtension(payload: Record<string, unknown>): Draft {
     },
     notes: payload.notes ? String(payload.notes) : undefined,
     rrweb: Array.isArray(payload.rrweb) && payload.rrweb.length > 1 ? (payload.rrweb as unknown[]) : undefined,
+    rrwebFileId: payload.rrwebFileId ? String(payload.rrwebFileId) : undefined,
   };
 }
 
@@ -149,7 +150,8 @@ export function bugFromDraft(draft: Draft, existing: Bug[]): Bug {
     // The rrweb stream keeps its full length (the DOM snapshot lives at the start); the
     // trim start becomes a playback offset instead.
     rrweb: draft.rrweb,
-    rrwebOffset: draft.rrweb ? t0 : undefined,
+    rrwebFileId: draft.rrwebFileId,
+    rrwebOffset: draft.rrweb || draft.rrwebFileId ? t0 : undefined,
   };
 }
 

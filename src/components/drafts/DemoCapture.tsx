@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { record } from "rrweb";
 import type { Draft, ReplayEvent, ConsoleEntry, NetEntry, BugMarker } from "@/lib/types";
 import { idb } from "@/lib/store";
+import { uploadJson } from "@/lib/storage-api";
 
 const DEMO_URL = "https://demo.bugfinder.dev/profile";
 
@@ -107,9 +108,19 @@ export function DemoCapture() {
       consoleLog.push({ t: now(), level: "warn", text: "[demo] retry also failed — error state persists" });
       await sleep(1100);
 
-      setPhase("Packaging the draft…");
+      setPhase("Uploading recording to storage…");
       stop?.();
       const durationMs = now();
+      // Prefer the storage service for the heavy recording; fall back to inline events.
+      let rrwebFileId: string | undefined;
+      let inlineEvents: unknown[] | undefined = events;
+      try {
+        rrwebFileId = await uploadJson(`demo-${Date.now().toString(36)}-rrweb.json`, events);
+        inlineEvents = undefined;
+      } catch {
+        /* storage unreachable — keep events inline */
+      }
+      setPhase("Packaging the draft…");
       const pick = saveRef.current;
       const draft: Draft = {
         id: `d-demo-${Date.now().toString(36)}`,
@@ -154,7 +165,8 @@ export function DemoCapture() {
           cores: navigator.hardwareConcurrency,
         },
         notes: "Recorded by the built-in demo capture — a real rrweb recording of this very flow.",
-        rrweb: events,
+        rrweb: inlineEvents,
+        rrwebFileId,
       };
       // Await the write — reloading before the IDB transaction commits would lose the draft.
       await idb.put("drafts", draft);

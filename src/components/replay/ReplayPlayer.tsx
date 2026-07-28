@@ -1,6 +1,16 @@
 // ABOUTME: The session-replay player — letterboxed stage at the recorded aspect ratio (so overlays
 // ABOUTME: land exactly), transport controls, and an accessible scrubbable timeline with markers/trim.
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type RefObject,
+} from "react";
 import {
   Flag,
   Maximize2,
@@ -10,14 +20,37 @@ import {
   RotateCcw,
   RotateCw,
 } from "lucide-react";
-import { lazy, Suspense } from "react";
 import type { Bug } from "@/lib/types";
+import { fetchStoredJson } from "@/lib/storage-api";
 import { cn, formatOffset, pathOf } from "@/lib/utils";
 import { MockPage } from "./MockPage";
 import type { ReplayClock } from "./useReplayClock";
 
 // rrweb (~250 KB) only loads when a bug actually has a pixel recording.
 const RrwebStage = lazy(() => import("./RrwebStage").then((m) => ({ default: m.RrwebStage })));
+
+/** The bug's pixel recording: inline events, or fetched from the storage service by file id. */
+function useRrwebEvents(bug: Bug): { events: unknown[] | null; loading: boolean } {
+  const inline = bug.rrweb && bug.rrweb.length > 1 ? bug.rrweb : null;
+  const fileId = inline ? null : (bug.rrwebFileId ?? null);
+  const [fetched, setFetched] = useState<unknown[] | null>(null);
+  const [loading, setLoading] = useState(fileId != null);
+  useEffect(() => {
+    if (!fileId) return;
+    let active = true;
+    setLoading(true);
+    fetchStoredJson<unknown[]>(fileId)
+      .then((events) => {
+        if (active) setFetched(Array.isArray(events) ? events : null);
+      })
+      .catch(() => active && setFetched(null))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [fileId]);
+  return { events: inline ?? fetched, loading };
+}
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -65,6 +98,7 @@ export function ReplayPlayer({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const { events: rrwebEvents, loading: rrwebLoading } = useRrwebEvents(bug);
 
   // The stage renders at the recorded viewport's aspect ratio so normalized coords
   // (cursor, ripples, picked-element rects) land exactly where they were captured.
@@ -119,16 +153,20 @@ export function ReplayPlayer({
       <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center bg-zinc-200/80">
         {box && (
           <div className="relative overflow-hidden bg-zinc-100 shadow-sm" style={{ width: box.w, height: box.h }}>
-            {bug.rrweb && bug.rrweb.length > 1 ? (
+            {rrwebEvents ? (
               <Suspense fallback={<div className="grid h-full place-items-center text-[12px] text-muted-foreground">Loading replay…</div>}>
                 <RrwebStage
-                  events={bug.rrweb}
+                  events={rrwebEvents}
                   offset={bug.rrwebOffset ?? 0}
                   clock={clock}
                   scale={box.w / (vp?.w || box.w)}
                   highlightRect={highlightRect}
                 />
               </Suspense>
+            ) : rrwebLoading ? (
+              <div className="grid h-full place-items-center text-[12px] text-muted-foreground">
+                Fetching recording from storage…
+              </div>
             ) : (
               <MockPage bug={bug} t={t} highlightRect={highlightRect} />
             )}

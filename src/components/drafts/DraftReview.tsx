@@ -54,6 +54,7 @@ export function DraftReview({
       notes: draft.notes,
       events: [],
       rrweb: draft.rrweb,
+      rrwebFileId: draft.rrwebFileId,
     }),
     [draft],
   );

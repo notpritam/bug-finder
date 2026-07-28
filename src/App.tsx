@@ -1,6 +1,6 @@
 // ABOUTME: App shell + URL routing — every screen has a shareable URL. Drafts and submitted bugs
 // ABOUTME: persist in IndexedDB (rrweb recordings are large); seeded demo bugs stay in memory.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -21,6 +21,7 @@ import {
   persistSubmittedBug,
   removeDraft,
 } from "@/lib/drafts";
+import { uploadJson } from "@/lib/storage-api";
 import { Sidebar, type SidebarView } from "@/components/shell/Sidebar";
 import { BugsPage } from "@/components/bugs/BugsPage";
 import { BugDetail } from "@/components/bugs/BugDetail";
@@ -133,8 +134,19 @@ function Shell() {
     navigate("/drafts");
   };
 
-  const submitDraft = (draft: Draft) => {
-    const bug = bugFromDraft(draft, bugs);
+  const submitDraft = async (draft: Draft) => {
+    // Recordings live in the storage service; the bug row keeps only the file id. If the
+    // upload fails (offline, service down) the events stay inline — nothing is lost.
+    let toFile = draft;
+    if (draft.rrweb && !draft.rrwebFileId) {
+      try {
+        const fileId = await uploadJson(`${draft.id}-rrweb.json`, draft.rrweb);
+        toFile = { ...draft, rrwebFileId: fileId, rrweb: undefined };
+      } catch {
+        /* keep inline */
+      }
+    }
+    const bug = bugFromDraft(toFile, bugs);
     persistSubmittedBug(bug);
     setBugs((prev) => [bug, ...prev]);
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
@@ -276,8 +288,12 @@ function DraftRoute({
   const navigate = useNavigate();
   const { id } = useParams();
   const draft = drafts.find((d) => d.id === id);
+  // Distinguish "never existed" (redirect) from "just submitted/discarded" (a navigation to
+  // the filed bug is already in flight as a transition — redirecting here would beat it).
+  const hadDraft = useRef(false);
+  if (draft) hadDraft.current = true;
   if (!draft && !hydrated) return null;
-  if (!draft) return <Navigate to="/drafts" replace />;
+  if (!draft) return hadDraft.current ? null : <Navigate to="/drafts" replace />;
   return (
     <DraftReview
       key={draft.id}
