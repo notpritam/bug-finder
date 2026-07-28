@@ -1,13 +1,11 @@
-// ABOUTME: Draft persistence + conversion — localStorage-backed until the real API exists.
-// ABOUTME: Accepts extension payloads, seeds one demo draft, and turns a reviewed draft into a Bug.
+// ABOUTME: Draft persistence + conversion — IndexedDB-backed until the real API exists.
+// ABOUTME: Accepts extension payloads and turns a reviewed draft into a filed Bug.
 import type { Bug, BugSeverity, Draft, ReplayEvent } from "./types";
-import { BUGS, ME } from "./data";
-
+import { ME } from "./data";
 import { idb } from "./store";
 
 const DRAFTS_KEY = "bf.drafts";
 const SUBMITTED_KEY = "bf.submitted";
-const SEEDED_KEY = "bf.drafts.seeded";
 
 /** Async load from IndexedDB, migrating any pre-IDB localStorage payloads on first run. */
 export async function loadDrafts(): Promise<Draft[]> {
@@ -22,12 +20,6 @@ export async function loadDrafts(): Promise<Draft[]> {
     /* legacy payload unreadable — skip */
   }
   const drafts = await idb.getAll<Draft>("drafts");
-  if (drafts.length === 0 && !localStorage.getItem(SEEDED_KEY)) {
-    localStorage.setItem(SEEDED_KEY, "1");
-    const demo = demoDraft();
-    await idb.put("drafts", demo);
-    return [demo];
-  }
   return drafts.sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -152,26 +144,5 @@ export function bugFromDraft(draft: Draft, existing: Bug[]): Bug {
     rrweb: draft.rrweb,
     rrwebFileId: draft.rrwebFileId,
     rrwebOffset: draft.rrweb || draft.rrwebFileId ? t0 : undefined,
-  };
-}
-
-/** One seeded example so the draft flow is explorable before the extension is installed. */
-function demoDraft(): Draft {
-  const src = BUGS.find((b) => b.humanId === "BF-103")!;
-  return {
-    id: "d-demo",
-    createdAt: Date.now() - 6 * 60_000,
-    pageUrl: src.pageUrl,
-    pageTitle: "Profile settings · Acme",
-    durationMs: src.durationMs,
-    scenario: src.scenario,
-    replay: src.replay,
-    console: src.console,
-    network: src.network,
-    pickedElements: src.pickedElements,
-    markers: src.markers,
-    visits: src.visits,
-    environment: src.environment,
-    notes: "Recorded while re-testing uploads on staging.",
   };
 }

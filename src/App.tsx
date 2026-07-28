@@ -1,5 +1,5 @@
-// ABOUTME: App shell + URL routing — every screen has a shareable URL. Drafts and submitted bugs
-// ABOUTME: persist in IndexedDB (rrweb recordings are large); seeded demo bugs stay in memory.
+// ABOUTME: App shell + URL routing — every screen has a shareable URL. Drafts and filed bugs
+// ABOUTME: persist in IndexedDB; recordings live in the storage service.
 import { useEffect, useRef, useState } from "react";
 import {
   BrowserRouter,
@@ -11,7 +11,7 @@ import {
   useParams,
 } from "react-router-dom";
 import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
-import { BUGS, ME } from "@/lib/data";
+import { ME } from "@/lib/data";
 import {
   bugFromDraft,
   draftFromExtension,
@@ -46,13 +46,11 @@ const PATH_TO_VIEW: Record<string, SidebarView> = {
   mine: "mine",
 };
 
-const isSeed = (bug: Bug) => BUGS.some((seed) => seed.id === bug.id);
-
 function Shell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [bugs, setBugs] = useState<Bug[]>(BUGS);
+  const [bugs, setBugs] = useState<Bug[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   // Deep links to persisted bugs/drafts must wait for IndexedDB before deciding "not found".
   const [hydrated, setHydrated] = useState(false);
@@ -60,7 +58,7 @@ function Shell() {
   // Hydrate persisted state (IndexedDB) once on mount.
   useEffect(() => {
     void Promise.all([loadSubmittedBugs(), loadDrafts()]).then(([submitted, storedDrafts]) => {
-      setBugs([...submitted, ...BUGS]);
+      setBugs(submitted);
       setDrafts(storedDrafts);
       setHydrated(true);
     });
@@ -87,7 +85,7 @@ function Shell() {
   const activeView: SidebarView =
     seg[0] === "drafts" ? "drafts" : seg[0] === "bugs" ? (PATH_TO_VIEW[seg[1]] ?? "all") : "all";
 
-  /** Mutate one bug, appending a history event, persisting if it's a submitted (non-seed) bug. */
+  /** Mutate one bug, appending a history event, and persist it. */
   const amendBug = (id: string, patch: Partial<Bug>, historyDetail: string | null) => {
     setBugs((prev) =>
       prev.map((b) => {
@@ -109,7 +107,7 @@ function Shell() {
               ]
             : b.events,
         };
-        if (!isSeed(next)) persistSubmittedBug(next);
+        persistSubmittedBug(next);
         return next;
       }),
     );

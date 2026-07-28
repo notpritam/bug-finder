@@ -110,8 +110,8 @@ export interface Bug {
   updatedAt: number;
   /** Recording window duration in ms. */
   durationMs: number;
-  /** Which mock scenario the simulated replay renders ("generic" = a real extension capture). */
-  scenario: "checkout" | "dashboard" | "settings" | "generic";
+  /** Stage renderer when no rrweb recording exists — only the generic wireframe remains. */
+  scenario: "generic";
   replay: ReplayEvent[];
   markers: BugMarker[];
   visits: BugVisit[];

@@ -1,7 +1,7 @@
 // ABOUTME: The bugs list — search + status/severity filter chips over rows of filed bugs,
 // ABOUTME: each with replay length, error count, reporter, and inline status.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Bug as BugIcon, ChevronRight, Clapperboard, Search } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
@@ -36,6 +36,7 @@ export function BugsPage({
   onOpenBug: (id: string) => void;
   onStatusChange: (id: string, status: BugStatus) => void;
 }) {
+  const navigate = useNavigate();
   // Filters + search live in the URL so any filtered view is shareable.
   const [params, setParams] = useSearchParams();
   const statusFilter = (params.get("status") as StatusFilter) ?? "all";
@@ -278,26 +279,43 @@ export function BugsPage({
               </li>
             );
           })}
-          {visible.length === 0 && (
-            <div className="py-10 text-center">
-              <p className="text-[13px] text-muted-foreground">
-                {scoped.length === 0
-                  ? "No bugs in this view."
-                  : query
-                    ? `No bugs match "${search.trim()}"${severityFilter !== "all" ? ` with severity ${severityFilter}` : ""}.`
-                    : "No bugs match these filters."}
-              </p>
-              {filtersActive && (
+          {visible.length === 0 &&
+            (bugs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-14 text-center">
+                <p className="text-[13.5px] font-semibold text-foreground">No bugs yet</p>
+                <p className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
+                  Record one with the <b>Bug Finder extension</b> on any site — the capture lands in{" "}
+                  <b>Drafts</b> for review before it's filed. Or try the built-in demo capture to see the
+                  whole flow right now.
+                </p>
                 <button
                   type="button"
-                  onClick={clearFilters}
-                  className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground transition hover:opacity-90"
+                  onClick={() => navigate("/demo-capture")}
+                  className="mt-4 rounded-lg bg-primary px-3.5 py-2 text-[12.5px] font-semibold text-primary-foreground shadow-card transition hover:opacity-90"
                 >
-                  Clear filters
+                  Record a demo capture
                 </button>
-              )}
-            </div>
-          )}
+              </div>
+            ) : (
+              <div className="py-10 text-center">
+                <p className="text-[13px] text-muted-foreground">
+                  {scoped.length === 0
+                    ? "No bugs in this view."
+                    : query
+                      ? `No bugs match "${search.trim()}"${severityFilter !== "all" ? ` with severity ${severityFilter}` : ""}.`
+                      : "No bugs match these filters."}
+                </p>
+                {filtersActive && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground transition hover:opacity-90"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ))}
         </ul>
       </div>
     </div>
