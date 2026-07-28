@@ -1,1 +1,258 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap");
+
+/* ------------------------------------------------------------------ *
+ * Bug Finder design tokens
+ * White cards floating on a light, cool-neutral gray canvas — soft
+ * shadows, generous radius, near-zero borders (elevation, not lines).
+ * The UI itself is neutral graphite; COLOR is reserved for data —
+ * status hues, error red, warning amber, success green.
+ * ------------------------------------------------------------------ */
+
+@theme inline {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+
+  --background: oklch(0.941 0.003 264);
+  --foreground: oklch(0.242 0.006 264);
+  --card: oklch(0.998 0 0);
+  --card-foreground: oklch(0.242 0.006 264);
+  --popover: oklch(0.998 0 0);
+  --popover-foreground: oklch(0.242 0.006 264);
+
+  --primary: oklch(0.3 0.008 264);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.955 0.003 264);
+  --secondary-foreground: oklch(0.31 0.007 264);
+  --muted: oklch(0.958 0.003 264);
+  --muted-foreground: oklch(0.556 0.006 264);
+  --accent: oklch(0.944 0.004 264);
+  --accent-foreground: oklch(0.3 0.007 264);
+  --destructive: oklch(0.585 0.203 26);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.908 0.004 264);
+  --input: oklch(0.9 0.005 264);
+  --ring: oklch(0.3 0.008 264);
+
+  /* Sidebar rail — darker than the canvas so the two surfaces read apart */
+  --sidebar: oklch(0.906 0.004 264);
+  --sidebar-foreground: oklch(0.242 0.006 264);
+  --sidebar-accent: oklch(0.866 0.006 264);
+  --sidebar-border: oklch(0.91 0.004 264);
+
+  /* Bug status hues — data, so multi-hued. */
+  --status-open: #2563eb;
+  --status-in_progress: #f59e0b;
+  --status-resolved: #16a34a;
+  --status-not_a_bug: #a1a1aa;
+  --status-wont_fix: #a1a1aa;
+
+  /* Replay event hues */
+  --ev-click: #2563eb;
+  --ev-nav: #8b5cf6;
+  --ev-error: #ef4444;
+  --ev-warn: #f59e0b;
+  --ev-net: #14b8a6;
+  --ev-input: #0ea5e9;
+  --ev-marker: #f59e0b;
+
+  --shadow-card: 0 1px 2px rgba(17, 18, 23, 0.04), 0 4px 10px rgba(17, 18, 23, 0.045);
+  --shadow-card-hover: 0 4px 12px rgba(17, 18, 23, 0.06), 0 14px 30px rgba(17, 18, 23, 0.1);
+  --shadow-pop: 0 8px 28px rgba(17, 18, 23, 0.12), 0 1px 2px rgba(17, 18, 23, 0.05);
+  --shadow-panel: 0 14px 50px rgba(17, 18, 23, 0.16);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    letter-spacing: -0.018em;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 16%, transparent);
+  }
+  a,
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+}
+
+@layer utilities {
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-card-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+  .shadow-pop {
+    box-shadow: var(--shadow-pop);
+  }
+  .shadow-panel {
+    box-shadow: var(--shadow-panel);
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 15%, transparent);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--foreground) 28%, transparent);
+    background-clip: padding-box;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Severity pills — soft, tinted, sentence-case */
+.pill-severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.09rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.005em;
+}
+.pill-critical {
+  background: #f6d0d0;
+  color: #9f1239;
+}
+.pill-high {
+  background: #fdeaee;
+  color: #b31e40;
+}
+.pill-medium {
+  background: #fbeedd;
+  color: #b1600f;
+}
+.pill-low {
+  background: #eef0f2;
+  color: #6b7280;
+}
+
+/* Motion — staggered card mount / feed enters, gated on prefers-reduced-motion. */
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.card-rise {
+  animation: card-rise 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--stagger, 0) * 42ms);
+}
+
+@keyframes soft-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.soft-fade {
+  animation: soft-fade 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Click ripple on the replay stage */
+@keyframes click-ripple {
+  from {
+    opacity: 0.65;
+    transform: translate(-50%, -50%) scale(0.25);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+}
+.click-ripple {
+  animation: click-ripple 0.55s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-rise,
+  .soft-fade,
+  .click-ripple {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}
