@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
-import { USERS, ME } from "@/lib/data";
+import { ENV_META, type Env } from "@/lib/meta";
 import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
 import {
   BUG_SEVERITY_ORDER,
@@ -19,6 +19,8 @@ import { InspectorRail } from "./InspectorRail";
 
 export function BugDetail({
   bug,
+  me,
+  people,
   relatedBugs,
   onBack,
   onStatusChange,
@@ -27,6 +29,9 @@ export function BugDetail({
   onComment,
 }: {
   bug: Bug;
+  me: Reporter;
+  /** Everyone assignable — you, registered accounts, the roster. */
+  people: Reporter[];
   /** Bugs sharing a tag or host with this one — the "look here too" trail. */
   relatedBugs: Bug[];
   onBack: () => void;
@@ -113,6 +118,15 @@ export function BugDetail({
             <span className="font-mono text-[12px] font-medium tracking-wide text-muted-foreground">{bug.humanId}</span>
             <StatusSelect status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
             <SeveritySelect severity={bug.severity} onChange={(s) => onSeverityChange(bug.id, s)} />
+            {bug.env && ENV_META[bug.env as Env] && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80"
+                title="Environment this was reproduced on"
+              >
+                <span className="size-2 rounded-full" style={{ background: ENV_META[bug.env as Env].color }} />
+                {ENV_META[bug.env as Env].label}
+              </span>
+            )}
             {/* tags link to the filtered list */}
             {bug.tags.map((tag) => (
               <button
@@ -152,6 +166,11 @@ export function BugDetail({
             <span className="inline-flex items-center gap-1.5">
               <UserAvatar name={bug.reporter.name} seed={bug.reporter.id} size={20} />
               Reported by <span className="font-medium text-foreground">{bug.reporter.name}</span>
+              {(bug.reporter.role || bug.reporter.team) && (
+                <span className="text-muted-foreground/70">
+                  ({[bug.reporter.role, bug.reporter.team].filter(Boolean).join(" · ")})
+                </span>
+              )}
             </span>
             <span className="inline-flex items-center gap-1.5">
               {bug.assignee && <UserAvatar name={bug.assignee.name} seed={bug.assignee.id} size={20} />}
@@ -166,13 +185,13 @@ export function BugDetail({
                 <select
                   value={bug.assignee?.id ?? ""}
                   onChange={(e) =>
-                    onAssigneeChange(bug.id, USERS.find((u) => u.id === e.target.value) ?? null)
+                    onAssigneeChange(bug.id, people.find((u) => u.id === e.target.value) ?? null)
                   }
                   aria-label="Change assignee"
                   className="absolute inset-0 cursor-pointer opacity-0"
                 >
                   <option value="">Unassigned</option>
-                  {USERS.map((u) => (
+                  {people.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
                     </option>
@@ -183,6 +202,16 @@ export function BugDetail({
             <span>
               Recording <span className="font-medium text-foreground">{formatDuration(bug.durationMs)}</span>
             </span>
+            {bug.initiative && (
+              <span>
+                Initiative <span className="font-medium text-foreground">{bug.initiative}</span>
+              </span>
+            )}
+            {bug.jobId && (
+              <span>
+                Job <span className="font-mono text-[11.5px] font-medium text-foreground">{bug.jobId}</span>
+              </span>
+            )}
           </div>
         </header>
 
@@ -242,7 +271,7 @@ export function BugDetail({
           <Card title="Description" className="lg:col-span-2">
             <p className="max-w-[75ch] whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">{bug.description}</p>
             {bug.notes && (
-              <div className="mt-3 flex gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 p-3">
+              <div className="mt-3 flex gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
                 <StickyNote className="mt-0.5 size-4 shrink-0 text-amber-600" />
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Reporter notes</p>
@@ -250,6 +279,7 @@ export function BugDetail({
                 </div>
               </div>
             )}
+            {bug.credentials && <TestAccountCard credentials={bug.credentials} />}
           </Card>
 
           <div className="flex flex-col gap-4">
@@ -277,7 +307,7 @@ export function BugDetail({
             </Card>
           )}
           <Card title="History & comments">
-            <CommentComposer onSubmit={(body) => onComment(bug.id, body)} />
+            <CommentComposer me={me} onSubmit={(body) => onComment(bug.id, body)} />
             <ol className="mt-3 space-y-3">
               {[...bug.events].sort((a, b) => b.at - a.at).map((ev) => (
                 <li key={ev.id} className="flex gap-2.5">
@@ -311,8 +341,42 @@ function Card({ title, className, children }: { title: string; className?: strin
   );
 }
 
+/** The account used on the app under test — password masked until revealed. */
+function TestAccountCard({ credentials }: { credentials: NonNullable<Bug["credentials"]> }) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <div className="mt-3 rounded-lg border border-border/60 bg-muted/40 p-3">
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+        Test account used
+      </p>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[12.5px]">
+        {credentials.username && (
+          <span>
+            <span className="text-muted-foreground">User</span>{" "}
+            <span className="font-mono font-medium">{credentials.username}</span>
+          </span>
+        )}
+        {credentials.password && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-muted-foreground">Password</span>{" "}
+            <span className="font-mono font-medium">{revealed ? credentials.password : "••••••••"}</span>
+            <button
+              type="button"
+              onClick={() => setRevealed((r) => !r)}
+              className="rounded border border-border/60 bg-card px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {revealed ? "Hide" : "Reveal"}
+            </button>
+          </span>
+        )}
+      </div>
+      {credentials.notes && <p className="mt-1.5 text-[12px] text-foreground/80">{credentials.notes}</p>}
+    </div>
+  );
+}
+
 /** The comment box — Enter posts, Shift+Enter for a newline. */
-function CommentComposer({ onSubmit }: { onSubmit: (body: string) => void }) {
+function CommentComposer({ me, onSubmit }: { me: Reporter; onSubmit: (body: string) => void }) {
   const [body, setBody] = useState("");
   const post = () => {
     const text = body.trim();
@@ -322,7 +386,7 @@ function CommentComposer({ onSubmit }: { onSubmit: (body: string) => void }) {
   };
   return (
     <div className="flex items-start gap-2">
-      <UserAvatar name={ME.name} seed={ME.id} size={22} />
+      <UserAvatar name={me.name} seed={me.id} size={22} />
       <div className="relative flex-1">
         <textarea
           value={body}

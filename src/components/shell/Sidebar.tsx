@@ -8,23 +8,26 @@ import {
   Inbox,
   LayoutDashboard,
   Loader2,
+  LogOut,
+  Moon,
   ShieldCheck,
+  Sun,
   UserRound,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Bug } from "@/lib/types";
-import { ME } from "@/lib/data";
+import type { AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/common/bits";
 
 export type SidebarView = "all" | "open" | "in_progress" | "resolved" | "mine" | "drafts";
 
-const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[]) => number }[] = [
+const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[], meId: string) => number }[] = [
   { key: "all", label: "All bugs", icon: <Inbox className="size-[17px]" />, count: (b) => b.length },
   { key: "open", label: "Open", icon: <CircleDot className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "open").length },
   { key: "in_progress", label: "In progress", icon: <Loader2 className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "in_progress").length },
   { key: "resolved", label: "Resolved", icon: <ShieldCheck className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "resolved").length },
-  { key: "mine", label: "Assigned to me", icon: <UserRound className="size-[17px]" />, count: (b) => b.filter((x) => x.assignee?.id === ME.id).length },
+  { key: "mine", label: "Assigned to me", icon: <UserRound className="size-[17px]" />, count: (b, meId) => b.filter((x) => x.assignee?.id === meId).length },
 ];
 
 export function Sidebar({
@@ -34,6 +37,8 @@ export function Sidebar({
   onView,
   bugs,
   draftCount,
+  user,
+  onSignOut,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -41,6 +46,8 @@ export function Sidebar({
   onView: (v: SidebarView) => void;
   bugs: Bug[];
   draftCount: number;
+  user: AuthUser;
+  onSignOut: () => void;
 }) {
   return (
     <aside
@@ -85,7 +92,7 @@ export function Sidebar({
             collapsed={collapsed}
             icon={v.icon}
             label={v.label}
-            count={v.count(bugs)}
+            count={v.count(bugs, user.id)}
             active={view === v.key}
             onClick={() => onView(v.key)}
           />
@@ -125,16 +132,72 @@ export function Sidebar({
 
       <footer className="border-t border-sidebar-border p-2.5">
         <div className={cn("flex items-center gap-2.5 rounded-lg px-1.5 py-1", collapsed && "justify-center px-0")}>
-          <UserAvatar name={ME.name} seed={ME.id} size={30} />
+          <UserAvatar name={user.name} seed={user.id} size={30} />
           {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-[12.5px] font-semibold">{ME.name}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{ME.email}</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12.5px] font-semibold">{user.name}</p>
+              <p className="truncate text-[10.5px] text-muted-foreground">
+                {user.role} · {user.team}
+              </p>
             </div>
           )}
+          {!collapsed && (
+            <>
+              <ThemeToggle />
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="size-4" />
+              </button>
+            </>
+          )}
         </div>
+        {collapsed && (
+          <div className="mt-1 flex flex-col items-center gap-1">
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </div>
+        )}
       </footer>
     </aside>
+  );
+}
+
+/** Light/dark switch — flips the root class and persists; index.html re-applies before paint. */
+function ThemeToggle() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  const toggle = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    try {
+      localStorage.setItem("bf.theme", next ? "dark" : "light");
+    } catch {
+      /* private mode */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      title={dark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+    >
+      {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+    </button>
   );
 }
 
@@ -173,7 +236,7 @@ function NavRow({
           <span
             className={cn(
               "text-[11px] font-semibold",
-              highlight ? "rounded-full bg-amber-100 px-1.5 text-amber-700" : "text-muted-foreground/80",
+              highlight ? "rounded-full bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" : "text-muted-foreground/80",
             )}
           >
             {count}

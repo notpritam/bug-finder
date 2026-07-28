@@ -150,7 +150,7 @@ export function ReplayPlayer({
 
       {/* Stage — letterboxed to the recorded aspect ratio. Real rrweb captures render the
           actual page pixels; dummy scenarios render the wireframe simulation. */}
-      <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center bg-zinc-200/80">
+      <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center bg-zinc-200/80 dark:bg-zinc-950/50">
         {box && (
           <div className="relative overflow-hidden bg-zinc-100 shadow-sm" style={{ width: box.w, height: box.h }}>
             {rrwebEvents ? (

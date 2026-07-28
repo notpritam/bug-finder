@@ -6,6 +6,8 @@ import { record } from "rrweb";
 import type { Draft, ReplayEvent, ConsoleEntry, NetEntry, BugMarker } from "@/lib/types";
 import { idb } from "@/lib/store";
 import { uploadJson } from "@/lib/storage-api";
+import { loadSession } from "@/lib/auth";
+import { envFromUrl } from "@/lib/meta";
 
 const DEMO_URL = "https://demo.bugfinder.dev/profile";
 
@@ -124,6 +126,7 @@ export function DemoCapture() {
       const pick = saveRef.current;
       const draft: Draft = {
         id: `d-demo-${Date.now().toString(36)}`,
+        reporter: loadSession() ?? undefined,
         createdAt: t0,
         pageUrl: DEMO_URL,
         pageTitle: "Profile · Bug Finder demo",
@@ -165,6 +168,7 @@ export function DemoCapture() {
           cores: navigator.hardwareConcurrency,
         },
         notes: "Recorded by the built-in demo capture — a real rrweb recording of this very flow.",
+        env: envFromUrl(DEMO_URL),
         rrweb: inlineEvents,
         rrwebFileId,
       };

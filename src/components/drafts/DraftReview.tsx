@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Trash2, X } from "lucide-react";
 import type { Bug, BugSeverity, Draft } from "@/lib/types";
+import { ENV_META, ENVS, envFromUrl, INITIATIVES, PRESET_TAGS, type Env } from "@/lib/meta";
 import { cn, formatDuration, formatOffset, hostOf } from "@/lib/utils";
 import { BUG_SEVERITY_ORDER } from "@/components/common/bits";
 import { ReplayPlayer, type Trim } from "@/components/replay/ReplayPlayer";
@@ -156,7 +157,7 @@ export function DraftReview({
           >
             <ArrowLeft className="size-4" /> Drafts
           </button>
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
             Draft — not submitted yet
           </span>
           <span className="ml-auto text-[12px] text-muted-foreground">
@@ -258,7 +259,7 @@ export function DraftReview({
                       className="h-7 flex-1 rounded-lg border border-border/60 bg-card px-2 text-[12px] outline-none transition-colors focus:border-primary/50"
                     />
                     {outside && (
-                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700" title="Outside the trim window — will be dropped on submit">
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" title="Outside the trim window — will be dropped on submit">
                         outside trim
                       </span>
                     )}
@@ -346,19 +347,111 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
           </select>
         </div>
         <div className="flex-1">
-          <label htmlFor="draft-tags" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-            Tags
+          <label htmlFor="draft-env" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Environment
+          </label>
+          <select
+            id="draft-env"
+            value={draft.env ?? envFromUrl(draft.pageUrl)}
+            onChange={(e) => onChange({ ...draft, env: e.target.value })}
+            className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none focus:border-primary/50"
+            title="Auto-detected from the captured URL — correct it if needed"
+          >
+            {ENVS.map((env) => (
+              <option key={env} value={env}>
+                {ENV_META[env as Env].label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label htmlFor="draft-tags" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+          Tags
+        </label>
+        <input
+          id="draft-tags"
+          type="text"
+          value={tagsText}
+          placeholder="checkout, payments"
+          onChange={(e) => {
+            setTagsText(e.target.value);
+            onChange({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) });
+          }}
+          className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+        />
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {PRESET_TAGS.filter((t) => !(draft.tags ?? []).includes(t)).map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => {
+                const next = [...(draft.tags ?? []), tag];
+                setTagsText(next.join(", "));
+                onChange({ ...draft, tags: next });
+              }}
+              className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              title={`Add "${tag}"`}
+            >
+              + {tag}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <label htmlFor="draft-initiative" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Initiative <span className="normal-case text-muted-foreground/60">(optional)</span>
           </label>
           <input
-            id="draft-tags"
+            id="draft-initiative"
             type="text"
-            value={tagsText}
-            placeholder="checkout, payments"
-            onChange={(e) => {
-              setTagsText(e.target.value);
-              onChange({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) });
-            }}
+            list="bf-initiatives"
+            value={draft.initiative ?? ""}
+            placeholder="Checkout Revamp"
+            onChange={(e) => onChange({ ...draft, initiative: e.target.value })}
             className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+          />
+          <datalist id="bf-initiatives">
+            {INITIATIVES.map((i) => (
+              <option key={i} value={i} />
+            ))}
+          </datalist>
+        </div>
+        <div className="flex-1">
+          <label htmlFor="draft-job" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Job / ticket ID <span className="normal-case text-muted-foreground/60">(optional)</span>
+          </label>
+          <input
+            id="draft-job"
+            type="text"
+            value={draft.jobId ?? ""}
+            placeholder="JOB-1234"
+            onChange={(e) => onChange({ ...draft, jobId: e.target.value })}
+            className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+          />
+        </div>
+      </div>
+      <div>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+          Test account used <span className="normal-case text-muted-foreground/60">(so a dev can repro with the same login)</span>
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={draft.credentials?.username ?? ""}
+            placeholder="Username / email"
+            onChange={(e) => onChange({ ...draft, credentials: { ...draft.credentials, username: e.target.value } })}
+            className="h-8 flex-1 rounded-lg border border-border/60 bg-card px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+            aria-label="Test account username"
+          />
+          <input
+            type="text"
+            value={draft.credentials?.password ?? ""}
+            placeholder="Password"
+            onChange={(e) => onChange({ ...draft, credentials: { ...draft.credentials, password: e.target.value } })}
+            className="h-8 flex-1 rounded-lg border border-border/60 bg-card px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+            aria-label="Test account password"
           />
         </div>
       </div>
@@ -383,7 +476,7 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
             id="draft-notes"
             value={draft.notes}
             onChange={(e) => onChange({ ...draft, notes: e.target.value })}
-            className="h-14 w-full resize-none rounded-lg border border-amber-200/80 bg-amber-50/50 p-2.5 text-[12px] leading-relaxed outline-none focus:border-amber-400"
+            className="h-14 w-full resize-none rounded-lg border border-amber-200/80 bg-amber-50/50 p-2.5 text-[12px] leading-relaxed outline-none focus:border-amber-400 dark:border-amber-500/25 dark:bg-amber-500/10 dark:focus:border-amber-500/60"
           />
         </div>
       )}

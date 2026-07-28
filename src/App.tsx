@@ -1,6 +1,6 @@
-// ABOUTME: App shell + URL routing — every screen has a shareable URL. Drafts and filed bugs
-// ABOUTME: persist in IndexedDB; recordings live in the storage service.
-import { useEffect, useRef, useState } from "react";
+// ABOUTME: App shell + URL routing behind the auth gate — every screen has a shareable URL.
+// ABOUTME: Drafts and filed bugs persist in IndexedDB; recordings live in the storage service.
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -11,7 +11,8 @@ import {
   useParams,
 } from "react-router-dom";
 import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
-import { ME } from "@/lib/data";
+import { USERS } from "@/lib/data";
+import { listAccountUsers, loadSession, signOut, type AuthUser } from "@/lib/auth";
 import {
   bugFromDraft,
   draftFromExtension,
@@ -23,9 +24,9 @@ import {
 } from "@/lib/drafts";
 import { uploadJson } from "@/lib/storage-api";
 import { Sidebar, type SidebarView } from "@/components/shell/Sidebar";
+import { AuthScreen } from "@/components/auth/AuthScreen";
 import { BugsPage } from "@/components/bugs/BugsPage";
 import { BugDetail } from "@/components/bugs/BugDetail";
-import { lazy, Suspense } from "react";
 import { DraftsPage } from "@/components/drafts/DraftsPage";
 import { DraftReview } from "@/components/drafts/DraftReview";
 
@@ -46,7 +47,7 @@ const PATH_TO_VIEW: Record<string, SidebarView> = {
   mine: "mine",
 };
 
-function Shell() {
+function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -54,6 +55,16 @@ function Shell() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   // Deep links to persisted bugs/drafts must wait for IndexedDB before deciding "not found".
   const [hydrated, setHydrated] = useState(false);
+
+  // Everyone assignable: you, registered accounts, and the demo roster (deduped by email —
+  // a registered account supersedes its roster stand-in).
+  const people = useMemo<Reporter[]>(() => {
+    const map = new Map<string, Reporter>();
+    for (const p of [user, ...listAccountUsers(), ...USERS]) {
+      if (!map.has(p.email.toLowerCase())) map.set(p.email.toLowerCase(), p);
+    }
+    return [...map.values()];
+  }, [user]);
 
   // Hydrate persisted state (IndexedDB) once on mount.
   useEffect(() => {
@@ -64,11 +75,11 @@ function Shell() {
     });
   }, []);
 
-  // Captures arriving from the extension bridge become drafts and open for review.
+  // Captures arriving from the extension bridge become drafts (owned by you) and open for review.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== window || e.data?.source !== "bugfinder-extension" || e.data.type !== "draft") return;
-      const incoming = draftFromExtension(e.data.draft as Record<string, unknown>);
+      const incoming = draftFromExtension(e.data.draft as Record<string, unknown>, user);
       window.postMessage({ source: "bugfinder-dashboard", type: "draft-received" }, "*");
       setDrafts((prev) => {
         if (prev.some((d) => d.id === incoming.id)) return prev;
@@ -79,7 +90,13 @@ function Shell() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [navigate]);
+  }, [navigate, user]);
+
+  // Drafts are personal: you review your own recordings.
+  const myDrafts = useMemo(
+    () => drafts.filter((d) => !d.reporter || d.reporter.id === user.id),
+    [drafts, user.id],
+  );
 
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
@@ -99,7 +116,7 @@ function Shell() {
                 ...b.events,
                 {
                   id: `e-${Date.now().toString(36)}`,
-                  actor: ME.name,
+                  actor: user.name,
                   kind: patch.status ? "status" : patch.assignee !== undefined ? "assigned" : "comment",
                   detail: historyDetail,
                   at: Date.now(),
@@ -144,7 +161,7 @@ function Shell() {
         /* keep inline */
       }
     }
-    const bug = bugFromDraft(toFile, bugs);
+    const bug = bugFromDraft(toFile, bugs, user);
     persistSubmittedBug(bug);
     setBugs((prev) => [bug, ...prev]);
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
@@ -162,18 +179,22 @@ function Shell() {
         view={activeView}
         onView={(v) => navigate(VIEW_TO_PATH[v])}
         bugs={bugs}
-        draftCount={drafts.length}
+        draftCount={myDrafts.length}
+        user={user}
+        onSignOut={onSignOut}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <Routes>
           <Route path="/" element={<Navigate to="/bugs" replace />} />
-          <Route path="/bugs/:view?" element={<BugsRoute bugs={bugs} onStatusChange={changeStatus} />} />
+          <Route path="/bugs/:view?" element={<BugsRoute bugs={bugs} me={user} onStatusChange={changeStatus} />} />
           <Route
             path="/bug/:humanId"
             element={
               <BugRoute
                 hydrated={hydrated}
                 bugs={bugs}
+                me={user}
+                people={people}
                 onStatusChange={changeStatus}
                 onSeverityChange={changeSeverity}
                 onAssigneeChange={changeAssignee}
@@ -183,14 +204,14 @@ function Shell() {
           />
           <Route
             path="/drafts"
-            element={<DraftsPage drafts={drafts} onOpen={(id) => navigate(`/drafts/${id}`)} onDiscard={discardDraft} />}
+            element={<DraftsPage drafts={myDrafts} onOpen={(id) => navigate(`/drafts/${id}`)} onDiscard={discardDraft} />}
           />
           <Route
             path="/drafts/:id"
             element={
               <DraftRoute
                 hydrated={hydrated}
-                drafts={drafts}
+                drafts={myDrafts}
                 onChange={updateDraft}
                 onSubmit={submitDraft}
                 onDiscard={discardDraft}
@@ -214,9 +235,11 @@ function Shell() {
 
 function BugsRoute({
   bugs,
+  me,
   onStatusChange,
 }: {
   bugs: Bug[];
+  me: Reporter;
   onStatusChange: (id: string, status: BugStatus) => void;
 }) {
   const navigate = useNavigate();
@@ -226,6 +249,7 @@ function BugsRoute({
   return (
     <BugsPage
       bugs={bugs}
+      me={me}
       view={sidebarView}
       onOpenBug={(id) => {
         const bug = bugs.find((b) => b.id === id);
@@ -239,6 +263,8 @@ function BugsRoute({
 function BugRoute({
   hydrated,
   bugs,
+  me,
+  people,
   onStatusChange,
   onSeverityChange,
   onAssigneeChange,
@@ -246,6 +272,8 @@ function BugRoute({
 }: {
   hydrated: boolean;
   bugs: Bug[];
+  me: Reporter;
+  people: Reporter[];
   onStatusChange: (id: string, status: BugStatus) => void;
   onSeverityChange: (id: string, severity: BugSeverity) => void;
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
@@ -275,6 +303,8 @@ function BugRoute({
   return (
     <BugDetail
       bug={bug}
+      me={me}
+      people={people}
       relatedBugs={related}
       onBack={back}
       onStatusChange={onStatusChange}
@@ -320,9 +350,17 @@ function DraftRoute({
 }
 
 function App() {
+  const [user, setUser] = useState<AuthUser | null>(loadSession);
+  if (!user) return <AuthScreen onAuthed={setUser} />;
   return (
     <BrowserRouter>
-      <Shell />
+      <Shell
+        user={user}
+        onSignOut={() => {
+          signOut();
+          setUser(null);
+        }}
+      />
     </BrowserRouter>
   );
 }

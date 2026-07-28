@@ -401,7 +401,7 @@ function ElementsList({
           }}
           className={cn(
             "rounded-lg border p-2.5 text-left transition-colors",
-            selectedPick === i ? "border-amber-400 bg-amber-50/60" : "border-border/60 hover:border-amber-300 hover:bg-accent/40",
+            selectedPick === i ? "border-amber-400 bg-amber-50/60 dark:border-amber-500/60 dark:bg-amber-500/10" : "border-border/60 hover:border-amber-300 hover:bg-accent/40 dark:hover:border-amber-500/40",
           )}
         >
           <div className="flex items-center gap-1.5">
@@ -554,7 +554,7 @@ export function InspectorRail({
               <span
                 className={cn(
                   "rounded-full px-1.5 text-[9.5px] font-bold",
-                  redBadge[t.key] ? "bg-red-100 text-red-600" : "bg-muted text-muted-foreground",
+                  redBadge[t.key] ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400" : "bg-muted text-muted-foreground",
                 )}
               >
                 {badge[t.key]}

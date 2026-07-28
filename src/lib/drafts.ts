@@ -1,7 +1,7 @@
 // ABOUTME: Draft persistence + conversion — IndexedDB-backed until the real API exists.
 // ABOUTME: Accepts extension payloads and turns a reviewed draft into a filed Bug.
-import type { Bug, BugSeverity, Draft, ReplayEvent } from "./types";
-import { ME } from "./data";
+import type { Bug, BugSeverity, Draft, ReplayEvent, Reporter } from "./types";
+import { envFromUrl } from "./meta";
 import { idb } from "./store";
 
 const DRAFTS_KEY = "bf.drafts";
@@ -51,10 +51,11 @@ export function persistSubmittedBug(bug: Bug) {
 }
 
 /** The extension's DraftPayload → our Draft. Shapes already align; fill in dashboard-only fields. */
-export function draftFromExtension(payload: Record<string, unknown>): Draft {
+export function draftFromExtension(payload: Record<string, unknown>, reporter?: Reporter): Draft {
   const env = (payload.environment ?? {}) as Draft["environment"];
   return {
     id: String(payload.id ?? `d-${Date.now().toString(36)}`),
+    reporter,
     createdAt: Number(payload.capturedAt ?? Date.now()),
     pageUrl: String(payload.pageUrl ?? ""),
     pageTitle: String(payload.pageTitle ?? "Captured session"),
@@ -78,6 +79,7 @@ export function draftFromExtension(payload: Record<string, unknown>): Draft {
       memoryGb: env.memoryGb,
     },
     notes: payload.notes ? String(payload.notes) : undefined,
+    env: envFromUrl(String(payload.pageUrl ?? "")),
     rrweb: Array.isArray(payload.rrweb) && payload.rrweb.length > 1 ? (payload.rrweb as unknown[]) : undefined,
     rrwebFileId: payload.rrwebFileId ? String(payload.rrwebFileId) : undefined,
   };
@@ -91,7 +93,7 @@ function clip<T extends { t: number }>(items: T[], t0: number, t1: number): T[] 
 let submitSeq = 0;
 
 /** A reviewed draft → a filed Bug. Applies the trim window and stamps identity/history. */
-export function bugFromDraft(draft: Draft, existing: Bug[]): Bug {
+export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter): Bug {
   const t0 = draft.trim?.in ?? 0;
   const t1 = draft.trim?.out ?? draft.durationMs;
   const maxNum = Math.max(100, ...existing.map((b) => Number(b.humanId.split("-")[1]) || 100));
@@ -120,7 +122,7 @@ export function bugFromDraft(draft: Draft, existing: Bug[]): Bug {
     severity: (draft.severity ?? "medium") as BugSeverity,
     tags: draft.tags ?? [],
     pageUrl: draft.pageUrl,
-    reporter: ME,
+    reporter,
     assignee: null,
     createdAt: now,
     updatedAt: now,
@@ -138,7 +140,14 @@ export function bugFromDraft(draft: Draft, existing: Bug[]): Bug {
     ),
     environment: draft.environment,
     notes: draft.notes,
-    events: [{ id: "e0", actor: ME.name, kind: "created", detail: "reported this bug via the extension", at: now }],
+    env: draft.env ?? envFromUrl(draft.pageUrl),
+    initiative: draft.initiative?.trim() || undefined,
+    jobId: draft.jobId?.trim() || undefined,
+    credentials:
+      draft.credentials && (draft.credentials.username || draft.credentials.password || draft.credentials.notes)
+        ? draft.credentials
+        : undefined,
+    events: [{ id: "e0", actor: reporter.name, kind: "created", detail: "reported this bug via the extension", at: now }],
     // The rrweb stream keeps its full length (the DOM snapshot lives at the start); the
     // trim start becomes a playback offset instead.
     rrweb: draft.rrweb,

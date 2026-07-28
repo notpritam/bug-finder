@@ -8,6 +8,17 @@ export interface Reporter {
   id: string;
   name: string;
   email: string;
+  /** Org context, when the reporter has an account (role/team chosen at signup). */
+  role?: string;
+  team?: string;
+}
+
+/** The account used on the app under test while reproducing — so a developer can sign in
+ *  with the same account. Password masked by default in the UI. */
+export interface TestCredentials {
+  username?: string;
+  password?: string;
+  notes?: string;
 }
 
 /** A marked moment on the recording clock — "this is the bug". `t` is ms from recording start. */
@@ -121,6 +132,14 @@ export interface Bug {
   environment: BugEnvironment;
   notes?: string;
   events: BugEvent[];
+  /** Environment the bug was reproduced on — auto-detected from the URL, editable at review. */
+  env?: string;
+  /** Larger effort this bug belongs to (e.g. "Checkout Revamp"). */
+  initiative?: string;
+  /** External job/ticket/build id, when relevant. */
+  jobId?: string;
+  /** The app-under-test account used while reproducing. */
+  credentials?: TestCredentials;
   /** Real rrweb recording (pixel-accurate replay) — present on bugs captured by the extension.
    *  When set, the player renders the rrweb Replayer instead of the wireframe simulation. */
   rrweb?: unknown[];
@@ -136,6 +155,8 @@ export interface Bug {
  *  The reporter reviews the replay, trims it, adds flags, fills the form, then submits. */
 export interface Draft {
   id: string;
+  /** Who recorded it — drafts are personal until submitted. */
+  reporter?: Reporter;
   createdAt: number;
   pageUrl: string;
   pageTitle: string;
@@ -159,4 +180,8 @@ export interface Draft {
   description?: string;
   severity?: BugSeverity;
   tags?: string[];
+  env?: string;
+  initiative?: string;
+  jobId?: string;
+  credentials?: TestCredentials;
 }

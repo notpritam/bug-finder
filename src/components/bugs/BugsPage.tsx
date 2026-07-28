@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Bug as BugIcon, ChevronRight, Clapperboard, Search } from "lucide-react";
-import type { Bug, BugSeverity, BugStatus } from "@/lib/types";
+import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
-import { ME } from "@/lib/data";
 import { cn, formatDuration, hostOf, relativeTime } from "@/lib/utils";
 import {
   BUG_SEVERITY_ORDER,
@@ -27,11 +26,13 @@ function isTypingTarget(el: EventTarget | null): boolean {
 
 export function BugsPage({
   bugs,
+  me,
   view,
   onOpenBug,
   onStatusChange,
 }: {
   bugs: Bug[];
+  me: Reporter;
   view: SidebarView;
   onOpenBug: (id: string) => void;
   onStatusChange: (id: string, status: BugStatus) => void;
@@ -70,11 +71,11 @@ export function BugsPage({
       case "resolved":
         return bugs.filter((b) => b.status === "resolved");
       case "mine":
-        return bugs.filter((b) => b.assignee?.id === ME.id);
+        return bugs.filter((b) => b.assignee?.id === me.id);
       default:
         return bugs;
     }
-  }, [bugs, view]);
+  }, [bugs, view, me.id]);
 
   // Status chips only exist on "All bugs" — sidebar views already constrain status, and two
   // competing status filters could contradict each other.

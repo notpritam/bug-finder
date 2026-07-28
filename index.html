@@ -5,6 +5,13 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bug Finder</title>
+    <script>
+      // Apply the saved theme before first paint so there's no flash. Dark is the default.
+      document.documentElement.classList.toggle(
+        "dark",
+        (localStorage.getItem("bf.theme") ?? "dark") === "dark",
+      );
+    </script>
   </head>
   <body>
     <div id="root"></div>
