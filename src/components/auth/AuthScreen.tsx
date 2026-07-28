@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 const NEW_TEAM = "__new__";
 
-export function AuthScreen({ onAuthed }: { onAuthed: (user: AuthUser) => void }) {
+export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) => void; onSkip?: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -168,9 +168,18 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: AuthUser) => void })
         </div>
 
         <p className="mt-4 text-center text-[11.5px] leading-relaxed text-muted-foreground">
-          Your account ties every report, draft, and comment to you — and the extension requires a
-          signed-in session before it will record.
+          An account ties reports, drafts, and comments to you — but you can also use Bug Finder
+          without one and submit anonymously.
         </p>
+        {onSkip && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className="mx-auto mt-2 block text-center text-[12px] font-semibold text-foreground underline-offset-2 hover:underline"
+          >
+            Continue without an account
+          </button>
+        )}
       </div>
     </div>
   );

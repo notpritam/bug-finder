@@ -2,7 +2,9 @@
 // ABOUTME: handles, add flags at timestamps, inspect evidence, fill the report, then submit.
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Trash2, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { Bug, BugSeverity, Draft } from "@/lib/types";
+import type { AuthUser } from "@/lib/auth";
 import { ENV_META, ENVS, envFromUrl, INITIATIVES, PRESET_TAGS, type Env } from "@/lib/meta";
 import { cn, formatDuration, formatOffset, hostOf } from "@/lib/utils";
 import { BUG_SEVERITY_ORDER } from "@/components/common/bits";
@@ -12,17 +14,20 @@ import { InspectorRail } from "@/components/bugs/InspectorRail";
 
 export function DraftReview({
   draft,
+  user,
   onChange,
   onSubmit,
   onDiscard,
   onBack,
 }: {
   draft: Draft;
+  user: AuthUser | null;
   onChange: (draft: Draft) => void;
   onSubmit: (draft: Draft) => void;
   onDiscard: (id: string) => void;
   onBack: () => void;
 }) {
+  const navigate = useNavigate();
   const clock = useReplayClock(draft.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
   const trim: Trim = draft.trim ?? { in: 0, out: draft.durationMs };
@@ -292,8 +297,18 @@ export function DraftReview({
                 : "cursor-not-allowed bg-muted text-muted-foreground",
             )}
           >
-            <Send className="size-4" /> Submit bug
+            <Send className="size-4" /> {user ? "Submit bug" : "Submit as Anonymous"}
           </button>
+          {!user && (
+            <button
+              type="button"
+              onClick={() => navigate("/auth")}
+              className="rounded-lg border border-border/60 bg-card px-3 py-2 text-[12.5px] font-semibold text-foreground transition hover:bg-accent"
+              title="Sign in or create an account — your draft stays right here"
+            >
+              Sign in to submit as yourself
+            </button>
+          )}
           {!canSubmit && <span className="text-[12px] text-muted-foreground">Give it a title to submit.</span>}
           <button
             type="button"

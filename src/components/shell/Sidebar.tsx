@@ -38,6 +38,7 @@ export function Sidebar({
   bugs,
   draftCount,
   user,
+  onSignIn,
   onSignOut,
 }: {
   collapsed: boolean;
@@ -46,7 +47,8 @@ export function Sidebar({
   onView: (v: SidebarView) => void;
   bugs: Bug[];
   draftCount: number;
-  user: AuthUser;
+  user: AuthUser | null;
+  onSignIn: () => void;
   onSignOut: () => void;
 }) {
   return (
@@ -92,7 +94,7 @@ export function Sidebar({
             collapsed={collapsed}
             icon={v.icon}
             label={v.label}
-            count={v.count(bugs, user.id)}
+            count={v.count(bugs, user?.id ?? "")}
             active={view === v.key}
             onClick={() => onView(v.key)}
           />
@@ -132,42 +134,76 @@ export function Sidebar({
 
       <footer className="border-t border-sidebar-border p-2.5">
         <div className={cn("flex items-center gap-2.5 rounded-lg px-1.5 py-1", collapsed && "justify-center px-0")}>
-          <UserAvatar name={user.name} seed={user.id} size={30} />
+          {user ? (
+            <UserAvatar name={user.name} seed={user.id} size={30} />
+          ) : (
+            <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-sidebar-accent text-muted-foreground">
+              <UserRound className="size-4" />
+            </span>
+          )}
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12.5px] font-semibold">{user.name}</p>
-              <p className="truncate text-[10.5px] text-muted-foreground">
-                {user.role} · {user.team}
-              </p>
+              {user ? (
+                <>
+                  <p className="truncate text-[12.5px] font-semibold">{user.name}</p>
+                  <p className="truncate text-[10.5px] text-muted-foreground">
+                    {user.role} · {user.team}
+                  </p>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSignIn}
+                  className="rounded-md text-left text-[12.5px] font-semibold text-foreground transition-colors hover:text-muted-foreground"
+                  title="Sign in or create an account"
+                >
+                  Sign in
+                  <span className="block text-[10.5px] font-normal text-muted-foreground">Browsing as guest</span>
+                </button>
+              )}
             </div>
           )}
           {!collapsed && (
             <>
               <ThemeToggle />
-              <button
-                type="button"
-                onClick={onSignOut}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                title="Sign out"
-                aria-label="Sign out"
-              >
-                <LogOut className="size-4" />
-              </button>
+              {user && (
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="size-4" />
+                </button>
+              )}
             </>
           )}
         </div>
         {collapsed && (
           <div className="mt-1 flex flex-col items-center gap-1">
             <ThemeToggle />
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-              title="Sign out"
-              aria-label="Sign out"
-            >
-              <LogOut className="size-4" />
-            </button>
+            {user ? (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="size-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onSignIn}
+                className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                title="Sign in"
+                aria-label="Sign in"
+              >
+                <UserRound className="size-4" />
+              </button>
+            )}
           </div>
         )}
       </footer>

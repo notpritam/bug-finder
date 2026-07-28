@@ -8,6 +8,9 @@ export interface AuthUser extends Reporter {
   team: string;
 }
 
+/** Stand-in reporter for submissions made without an account. */
+export const ANONYMOUS: Reporter = { id: "anon", name: "Anonymous", email: "" };
+
 interface StoredUser extends AuthUser {
   passwordHash: string;
 }

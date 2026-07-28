@@ -12,7 +12,7 @@ import {
 } from "react-router-dom";
 import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
 import { USERS } from "@/lib/data";
-import { listAccountUsers, loadSession, signOut, type AuthUser } from "@/lib/auth";
+import { ANONYMOUS, listAccountUsers, loadSession, signOut, type AuthUser } from "@/lib/auth";
 import {
   bugFromDraft,
   draftFromExtension,
@@ -47,7 +47,15 @@ const PATH_TO_VIEW: Record<string, SidebarView> = {
   mine: "mine",
 };
 
-function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
+function Shell({
+  user,
+  onAuthed,
+  onSignOut,
+}: {
+  user: AuthUser | null;
+  onAuthed: (u: AuthUser) => void;
+  onSignOut: () => void;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -60,7 +68,7 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   // a registered account supersedes its roster stand-in).
   const people = useMemo<Reporter[]>(() => {
     const map = new Map<string, Reporter>();
-    for (const p of [user, ...listAccountUsers(), ...USERS]) {
+    for (const p of [...(user ? [user] : []), ...listAccountUsers(), ...USERS]) {
       if (!map.has(p.email.toLowerCase())) map.set(p.email.toLowerCase(), p);
     }
     return [...map.values()];
@@ -79,7 +87,7 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== window || e.data?.source !== "bugfinder-extension" || e.data.type !== "draft") return;
-      const incoming = draftFromExtension(e.data.draft as Record<string, unknown>, user);
+      const incoming = draftFromExtension(e.data.draft as Record<string, unknown>, user ?? undefined);
       window.postMessage({ source: "bugfinder-dashboard", type: "draft-received" }, "*");
       setDrafts((prev) => {
         if (prev.some((d) => d.id === incoming.id)) return prev;
@@ -94,8 +102,8 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
 
   // Drafts are personal: you review your own recordings.
   const myDrafts = useMemo(
-    () => drafts.filter((d) => !d.reporter || d.reporter.id === user.id),
-    [drafts, user.id],
+    () => drafts.filter((d) => !d.reporter || d.reporter.id === user?.id),
+    [drafts, user?.id],
   );
 
   const seg = location.pathname.split("/").filter(Boolean);
@@ -116,7 +124,7 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
                 ...b.events,
                 {
                   id: `e-${Date.now().toString(36)}`,
-                  actor: user.name,
+                  actor: user?.name ?? "Anonymous",
                   kind: patch.status ? "status" : patch.assignee !== undefined ? "assigned" : "comment",
                   detail: historyDetail,
                   at: Date.now(),
@@ -161,7 +169,7 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
         /* keep inline */
       }
     }
-    const bug = bugFromDraft(toFile, bugs, user);
+    const bug = bugFromDraft(toFile, bugs, user ?? ANONYMOUS);
     persistSubmittedBug(bug);
     setBugs((prev) => [bug, ...prev]);
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
@@ -181,6 +189,7 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
         bugs={bugs}
         draftCount={myDrafts.length}
         user={user}
+        onSignIn={() => navigate("/auth")}
         onSignOut={onSignOut}
       />
       <main className="flex min-w-0 flex-1 flex-col">
@@ -212,10 +221,21 @@ function Shell({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
               <DraftRoute
                 hydrated={hydrated}
                 drafts={myDrafts}
+                user={user}
                 onChange={updateDraft}
                 onSubmit={submitDraft}
                 onDiscard={discardDraft}
               />
+            }
+          />
+          <Route
+            path="/auth"
+            element={
+              user ? (
+                <Navigate to="/bugs" replace />
+              ) : (
+                <AuthGate onAuthed={onAuthed} />
+              )
             }
           />
           <Route
@@ -239,7 +259,7 @@ function BugsRoute({
   onStatusChange,
 }: {
   bugs: Bug[];
-  me: Reporter;
+  me: Reporter | null;
   onStatusChange: (id: string, status: BugStatus) => void;
 }) {
   const navigate = useNavigate();
@@ -272,7 +292,7 @@ function BugRoute({
 }: {
   hydrated: boolean;
   bugs: Bug[];
-  me: Reporter;
+  me: Reporter | null;
   people: Reporter[];
   onStatusChange: (id: string, status: BugStatus) => void;
   onSeverityChange: (id: string, severity: BugSeverity) => void;
@@ -318,12 +338,14 @@ function BugRoute({
 function DraftRoute({
   hydrated,
   drafts,
+  user,
   onChange,
   onSubmit,
   onDiscard,
 }: {
   hydrated: boolean;
   drafts: Draft[];
+  user: AuthUser | null;
   onChange: (d: Draft) => void;
   onSubmit: (d: Draft) => void;
   onDiscard: (id: string) => void;
@@ -341,6 +363,7 @@ function DraftRoute({
     <DraftReview
       key={draft.id}
       draft={draft}
+      user={user}
       onChange={onChange}
       onSubmit={onSubmit}
       onDiscard={onDiscard}
@@ -349,13 +372,27 @@ function DraftRoute({
   );
 }
 
+/** The /auth route — sign in / sign up, then return to where you came from. */
+function AuthGate({ onAuthed }: { onAuthed: (u: AuthUser) => void }) {
+  const navigate = useNavigate();
+  return (
+    <AuthScreen
+      onAuthed={(u) => {
+        onAuthed(u);
+        navigate(-1);
+      }}
+      onSkip={() => navigate(-1)}
+    />
+  );
+}
+
 function App() {
   const [user, setUser] = useState<AuthUser | null>(loadSession);
-  if (!user) return <AuthScreen onAuthed={setUser} />;
   return (
     <BrowserRouter>
       <Shell
         user={user}
+        onAuthed={setUser}
         onSignOut={() => {
           signOut();
           setUser(null);

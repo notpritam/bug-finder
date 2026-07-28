@@ -32,7 +32,7 @@ export function BugsPage({
   onStatusChange,
 }: {
   bugs: Bug[];
-  me: Reporter;
+  me: Reporter | null;
   view: SidebarView;
   onOpenBug: (id: string) => void;
   onStatusChange: (id: string, status: BugStatus) => void;
@@ -71,11 +71,11 @@ export function BugsPage({
       case "resolved":
         return bugs.filter((b) => b.status === "resolved");
       case "mine":
-        return bugs.filter((b) => b.assignee?.id === me.id);
+        return me ? bugs.filter((b) => b.assignee?.id === me.id) : [];
       default:
         return bugs;
     }
-  }, [bugs, view, me.id]);
+  }, [bugs, view, me]);
 
   // Status chips only exist on "All bugs" — sidebar views already constrain status, and two
   // competing status filters could contradict each other.

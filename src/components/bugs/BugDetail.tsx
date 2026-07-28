@@ -29,7 +29,7 @@ export function BugDetail({
   onComment,
 }: {
   bug: Bug;
-  me: Reporter;
+  me: Reporter | null;
   /** Everyone assignable — you, registered accounts, the roster. */
   people: Reporter[];
   /** Bugs sharing a tag or host with this one — the "look here too" trail. */
@@ -376,7 +376,7 @@ function TestAccountCard({ credentials }: { credentials: NonNullable<Bug["creden
 }
 
 /** The comment box — Enter posts, Shift+Enter for a newline. */
-function CommentComposer({ me, onSubmit }: { me: Reporter; onSubmit: (body: string) => void }) {
+function CommentComposer({ me, onSubmit }: { me: Reporter | null; onSubmit: (body: string) => void }) {
   const [body, setBody] = useState("");
   const post = () => {
     const text = body.trim();
@@ -386,7 +386,7 @@ function CommentComposer({ me, onSubmit }: { me: Reporter; onSubmit: (body: stri
   };
   return (
     <div className="flex items-start gap-2">
-      <UserAvatar name={me.name} seed={me.id} size={22} />
+      <UserAvatar name={me?.name ?? "Anonymous"} seed={me?.id ?? "anon"} size={22} />
       <div className="relative flex-1">
         <textarea
           value={body}
