@@ -47,7 +47,7 @@ export function BugDetail({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
-      <div className="mx-auto w-full max-w-[1400px] space-y-4 px-6 py-5">
+      <div className="w-full space-y-4 px-6 py-5">
         <button
           type="button"
           onClick={onBack}
@@ -101,7 +101,7 @@ export function BugDetail({
         </header>
 
         {/* Replay + inspector — the core */}
-        <div className="soft-fade grid h-[560px] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="soft-fade grid h-[max(480px,calc(100vh-300px))] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
           <ReplayPlayer bug={bug} clock={clock} highlightRect={highlightRect} />
           <InspectorRail bug={bug} clock={clock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
         </div>

@@ -114,7 +114,7 @@ export function BugsPage({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background px-8 py-8">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto w-full">
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <BugIcon className="size-5 text-primary" />
           <h1 className="text-[20px] font-bold tracking-tight">Bugs</h1>
