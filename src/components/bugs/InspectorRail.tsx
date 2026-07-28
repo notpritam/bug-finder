@@ -149,6 +149,18 @@ function ActivityList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
           title: c.level === "error" ? "Console error" : "Console warning",
           detail: c.text.split("\n")[0],
         });
+    // Replay error events (uncaught exceptions) — skip ones already covered by a console
+    // error at the same moment so the same failure isn't listed twice.
+    for (const ev of bug.replay)
+      if (ev.kind === "error" && !bug.console.some((c) => c.level === "error" && Math.abs(c.t - ev.t) < 150))
+        out.push({
+          key: `e${ev.t}`,
+          t: ev.t,
+          icon: <AlertTriangle className="size-3.5" />,
+          color: "var(--ev-error)",
+          title: "Error",
+          detail: ev.message,
+        });
     for (const n of bug.network)
       out.push({
         key: `r${n.id}`,
@@ -193,10 +205,11 @@ function ActivityList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
 
 function ConsoleList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
   const [filter, setFilter] = useState<"all" | "error">("all");
-  const entries = bug.console.filter((c) => filter === "all" || c.level === "error" || c.level === "warn");
+  // "Errors" means errors — the same predicate as the tab badge, so the numbers always agree.
+  const entries = bug.console.filter((c) => filter === "all" || c.level === "error");
   const activeIdx = entries.reduce((acc, e, i) => (e.t <= clock.t ? i : acc), -1);
   const setRef = useAutoScroll(activeIdx >= 0 ? `${entries[activeIdx].t}` : null);
-  const errorCount = bug.console.filter((c) => c.level === "error" || c.level === "warn").length;
+  const errorCount = bug.console.filter((c) => c.level === "error").length;
 
   if (bug.console.length === 0) return <EmptyTab label="No console output captured." />;
   return (
@@ -232,9 +245,10 @@ function ConsoleList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
                   className="mt-1 size-1.5 shrink-0 rounded-full"
                   style={{ background: levelColor(c.level) }}
                 />
-                <span className="whitespace-pre-wrap break-words font-mono text-[10.5px] leading-relaxed text-foreground/85">
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[10.5px] leading-relaxed text-foreground/85">
                   {c.text}
                 </span>
+                <CopyButton text={c.text} label="Copy console line" />
               </span>
             </RailRow>
           ))}
@@ -291,15 +305,28 @@ function NetworkList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
 function NetworkDetail({ entry }: { entry: NetEntry }) {
   return (
     <div className="mx-2 mb-1.5 space-y-2 rounded-md border border-border/60 bg-muted/40 p-2.5">
-      <p className="break-all font-mono text-[10px] text-muted-foreground">{entry.url}</p>
+      <div className="flex items-start gap-1.5">
+        <p className="min-w-0 flex-1 break-all font-mono text-[10px] text-muted-foreground">{entry.url}</p>
+        <CopyButton text={entry.url} label="Copy URL" />
+      </div>
       <div className="grid grid-cols-3 gap-2 text-[10px]">
-        <Fact label="Status" value={`${entry.status} ${entry.statusText ?? ""}`} />
+        <Fact label="Status" value={`${entry.status} ${entry.statusText ?? ""}`} wrap />
         <Fact label="Duration" value={`${entry.durationMs} ms`} />
         <Fact label="Size" value={formatBytes(entry.sizeBytes)} />
       </div>
+      {entry.requestHeaders && Object.keys(entry.requestHeaders).length > 0 && (
+        <DetailSection title="Request headers">
+          <HeaderList headers={entry.requestHeaders} />
+        </DetailSection>
+      )}
       {entry.requestBody && (
         <DetailSection title="Request body">
           <Payload text={entry.requestBody} />
+        </DetailSection>
+      )}
+      {entry.responseHeaders && Object.keys(entry.responseHeaders).length > 0 && (
+        <DetailSection title="Response headers">
+          <HeaderList headers={entry.responseHeaders} />
         </DetailSection>
       )}
       {entry.responseBody && (
@@ -308,6 +335,38 @@ function NetworkDetail({ entry }: { entry: NetEntry }) {
         </DetailSection>
       )}
     </div>
+  );
+}
+
+function HeaderList({ headers }: { headers: Record<string, string> }) {
+  return (
+    <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-2 gap-y-0.5">
+      {Object.entries(headers).map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="truncate font-mono text-[10px] text-muted-foreground">{k}</dt>
+          <dd className="min-w-0 break-all font-mono text-[10px] text-foreground/80">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+      className="shrink-0 rounded border border-border/60 bg-card px-1.5 py-0.5 text-[9.5px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      title={label}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
   );
 }
 
@@ -418,11 +477,18 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
   );
 }
 
-function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Fact({ label, value, mono, wrap }: { label: string; value: string; mono?: boolean; wrap?: boolean }) {
   return (
     <div className="min-w-0">
       <p className="text-[9.5px] font-medium uppercase tracking-wide text-muted-foreground/60">{label}</p>
-      <p className={cn("truncate text-[11.5px] font-medium text-foreground", mono && "font-mono text-[10.5px]")} title={value}>
+      <p
+        className={cn(
+          "text-[11.5px] font-medium text-foreground",
+          mono && "font-mono text-[10.5px]",
+          wrap ? "break-words" : "truncate",
+        )}
+        title={value}
+      >
         {value}
       </p>
     </div>
@@ -431,9 +497,14 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
 
 function Payload({ text }: { text: string }) {
   return (
-    <pre className="max-h-48 overflow-auto scroll-thin rounded bg-card p-2 font-mono text-[10px] leading-relaxed text-foreground/85">
-      {text}
-    </pre>
+    <div className="relative">
+      <pre className="max-h-48 overflow-auto scroll-thin whitespace-pre-wrap break-words rounded bg-card p-2 pr-14 font-mono text-[10px] leading-relaxed text-foreground/85">
+        {text}
+      </pre>
+      <span className="absolute right-1.5 top-1.5">
+        <CopyButton text={text} label="Copy body" />
+      </span>
+    </div>
   );
 }
 
@@ -452,32 +523,38 @@ export function InspectorRail({
 }) {
   const [tab, setTab] = useState<Tab>("activity");
   const errorCount = bug.console.filter((c) => c.level === "error").length;
+  const failedRequests = bug.network.filter((n) => n.status >= 400 || n.status === 0).length;
 
   const badge: Partial<Record<Tab, number>> = {
     console: errorCount || undefined,
+    network: failedRequests || undefined,
     elements: bug.pickedElements.length || undefined,
   };
+  const redBadge: Partial<Record<Tab, boolean>> = { console: true, network: true };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card">
-      <div className="flex shrink-0 items-center overflow-x-auto scroll-thin border-b border-border/60 px-1.5 pt-1.5">
+    <div className="@container flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card">
+      {/* Labels collapse to icons in a narrow rail so every tab (incl. Info) stays reachable. */}
+      <div className="flex shrink-0 items-center border-b border-border/60 px-1.5 pt-1.5">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
+            aria-label={t.label}
+            title={t.label}
             className={cn(
               "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md px-2.5 py-2 text-[11.5px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
               tab === t.key ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
             {t.icon}
-            {t.label}
+            <span className="hidden @[430px]:inline">{t.label}</span>
             {badge[t.key] != null && (
               <span
                 className={cn(
                   "rounded-full px-1.5 text-[9.5px] font-bold",
-                  t.key === "console" ? "bg-red-100 text-red-600" : "bg-muted text-muted-foreground",
+                  redBadge[t.key] ? "bg-red-100 text-red-600" : "bg-muted text-muted-foreground",
                 )}
               >
                 {badge[t.key]}

@@ -36,10 +36,10 @@ export function formatOffset(ms: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-/** "1m 24s" long-form duration. */
+/** "1m 24s" long-form duration. Floors like formatOffset so the two never disagree. */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "—";
-  const s = Math.round(ms / 1000);
+  const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
   return `${m}m ${String(s % 60).padStart(2, "0")}s`;

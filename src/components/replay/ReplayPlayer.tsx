@@ -1,6 +1,6 @@
-// ABOUTME: The session-replay player — browser-chrome stage around the simulated page, transport
-// ABOUTME: controls, and a scrubbable timeline with event ticks and marker flags (PostHog-style).
-import { useCallback, useMemo, useRef, useState, type PointerEvent } from "react";
+// ABOUTME: The session-replay player — letterboxed stage at the recorded aspect ratio (so overlays
+// ABOUTME: land exactly), transport controls, and an accessible scrubbable timeline with markers/trim.
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from "react";
 import {
   Flag,
   Maximize2,
@@ -11,7 +11,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import type { Bug } from "@/lib/types";
-import { formatOffset, pathOf } from "@/lib/utils";
+import { cn, formatOffset, pathOf } from "@/lib/utils";
 import { MockPage } from "./MockPage";
 import type { ReplayClock } from "./useReplayClock";
 
@@ -20,6 +20,27 @@ const SPEEDS = [0.5, 1, 2, 4];
 export interface Trim {
   in: number;
   out: number;
+}
+
+/** Largest box of the given aspect ratio that fits the container (letterbox/pillarbox). */
+function useFitBox(ref: RefObject<HTMLDivElement | null>, ratio: number) {
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      if (!cw || !ch) return;
+      const w = Math.min(cw, ch * ratio);
+      setBox({ w, h: w / ratio });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, ratio]);
+  return box;
 }
 
 export function ReplayPlayer({
@@ -38,7 +59,14 @@ export function ReplayPlayer({
 }) {
   const { t, playing, duration, speed } = clock;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+
+  // The stage renders at the recorded viewport's aspect ratio so normalized coords
+  // (cursor, ripples, picked-element rects) land exactly where they were captured.
+  const vp = bug.environment.viewport;
+  const ratio = vp && vp.h > 0 ? vp.w / vp.h : 16 / 10;
+  const box = useFitBox(stageRef, ratio);
 
   const currentUrl = useMemo(() => {
     let url = bug.visits[0]?.url ?? bug.pageUrl;
@@ -82,9 +110,13 @@ export function ReplayPlayer({
         </button>
       </div>
 
-      {/* Stage */}
-      <div className="relative min-h-0 flex-1 bg-zinc-100">
-        <MockPage bug={bug} t={t} highlightRect={highlightRect} />
+      {/* Stage — letterboxed to the recorded aspect ratio */}
+      <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center bg-zinc-200/80">
+        {box && (
+          <div className="relative overflow-hidden bg-zinc-100 shadow-sm" style={{ width: box.w, height: box.h }}>
+            <MockPage bug={bug} t={t} highlightRect={highlightRect} />
+          </div>
+        )}
         {!playing && t === 0 && (
           <button
             type="button"
@@ -138,7 +170,7 @@ export function ReplayPlayer({
           type="button"
           onClick={() => clock.setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
           className="ml-auto rounded-lg px-2 py-1 font-mono text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          title="Playback speed"
+          title="Playback speed (click to cycle)"
         >
           {speed}×
         </button>
@@ -147,8 +179,8 @@ export function ReplayPlayer({
   );
 }
 
-/** The scrubbable timeline: progress fill, click/nav/error ticks, marker flags above, and
- *  (in draft mode) trim handles with shaded dropped regions. */
+/** The scrubbable timeline. Structure matters for a11y: the scrub surface is one slider; marker
+ *  flags and trim handles are SIBLING controls (buttons/sliders), never nested inside it. */
 function Timeline({
   bug,
   clock,
@@ -161,7 +193,7 @@ function Timeline({
   onTrimChange?: (trim: Trim) => void;
 }) {
   const { t, duration } = clock;
-  const trackRef = useRef<HTMLDivElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
   const trimDrag = useRef<"in" | "out" | null>(null);
   const [hoverT, setHoverT] = useState<number | null>(null);
@@ -180,7 +212,7 @@ function Timeline({
 
   const timeFromPointer = useCallback(
     (e: PointerEvent) => {
-      const el = trackRef.current;
+      const el = wrapRef.current;
       if (!el) return 0;
       const rect = el.getBoundingClientRect();
       const f = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -189,23 +221,22 @@ function Timeline({
     [duration],
   );
 
+  const nudgeTrim = (which: "in" | "out", delta: number) => {
+    if (!trim || !onTrimChange) return;
+    if (which === "in") {
+      onTrimChange({ in: Math.max(0, Math.min(trim.in + delta, trim.out - 500)), out: trim.out });
+    } else {
+      onTrimChange({ in: trim.in, out: Math.min(duration, Math.max(trim.out + delta, trim.in + 500)) });
+    }
+  };
+
+  const inTrim = (tt: number) => !trim || (tt >= trim.in && tt <= trim.out);
+
   return (
     <div className="shrink-0 border-t border-border/60 px-2.5 pb-1 pt-3">
       <div
-        ref={trackRef}
-        role="slider"
-        aria-label="Replay timeline"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(duration / 1000)}
-        aria-valuenow={Math.round(t / 1000)}
-        tabIndex={0}
-        className="group relative h-5 cursor-pointer touch-none"
-        onPointerDown={(e) => {
-          dragging.current = true;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          clock.pause();
-          clock.seek(timeFromPointer(e));
-        }}
+        ref={wrapRef}
+        className="group relative h-5"
         onPointerMove={(e) => {
           setHoverT(timeFromPointer(e));
           if (trimDrag.current && trim && onTrimChange) {
@@ -221,23 +252,16 @@ function Timeline({
           trimDrag.current = null;
         }}
         onPointerLeave={() => setHoverT(null)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") clock.skip(-5000);
-          if (e.key === "ArrowRight") clock.skip(5000);
-        }}
       >
-        {/* marker flags above the track */}
+        {/* marker flags — siblings of the slider, real buttons with names */}
         {bug.markers.map((m, i) => (
           <button
             key={i}
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              clock.seek(m.t);
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="absolute -top-2 z-10 -translate-x-1/2"
+            onClick={() => clock.seek(m.t)}
+            className={cn("absolute -top-2 z-10 -translate-x-1/2 transition-opacity", !inTrim(m.t) && "opacity-30")}
             style={{ left: `${(m.t / duration) * 100}%` }}
+            aria-label={`${m.kind === "error" ? "Error" : "Flag"}: ${m.label ?? "marker"} at ${formatOffset(m.t)}`}
             title={`${m.label ?? "Marker"} · ${formatOffset(m.t)}`}
           >
             <Flag
@@ -248,71 +272,110 @@ function Timeline({
           </button>
         ))}
 
-        {/* trimmed-out shading + handles */}
-        {trim && (
-          <>
-            {trim.in > 0 && (
-              <div
-                className="absolute inset-y-0 left-0 rounded-l bg-foreground/8"
-                style={{ width: `${(trim.in / duration) * 100}%` }}
-              />
-            )}
-            {trim.out < duration && (
-              <div
-                className="absolute inset-y-0 right-0 rounded-r bg-foreground/8"
-                style={{ width: `${((duration - trim.out) / duration) * 100}%` }}
-              />
-            )}
-            {(["in", "out"] as const).map((which) => (
-              <div
-                key={which}
-                role="slider"
-                aria-label={which === "in" ? "Trim start" : "Trim end"}
-                aria-valuemin={0}
-                aria-valuemax={Math.round(duration / 1000)}
-                aria-valuenow={Math.round(trim[which] / 1000)}
-                className="absolute top-1/2 z-20 h-5 w-[7px] -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-[3px] border border-card bg-amber-500 shadow-sm"
-                style={{ left: `${(trim[which] / duration) * 100}%` }}
-                title={`${which === "in" ? "Trim start" : "Trim end"} · ${formatOffset(trim[which])} — drag to adjust`}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  trimDrag.current = which;
-                  (e.currentTarget.parentElement as HTMLElement | null)?.setPointerCapture(e.pointerId);
-                  clock.pause();
-                }}
-              />
-            ))}
-          </>
-        )}
+        {/* the scrub surface — the only nested content is presentation */}
+        <div
+          role="slider"
+          aria-label="Replay timeline"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(duration / 1000)}
+          aria-valuenow={Math.round(t / 1000)}
+          aria-valuetext={formatOffset(t)}
+          tabIndex={0}
+          className="absolute inset-0 cursor-pointer touch-none rounded outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          onPointerDown={(e) => {
+            dragging.current = true;
+            wrapRef.current?.setPointerCapture(e.pointerId);
+            clock.pause();
+            clock.seek(timeFromPointer(e));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") clock.skip(-5000);
+            if (e.key === "ArrowRight") clock.skip(5000);
+          }}
+        >
+          {/* dropped-region shading */}
+          {trim && trim.in > 0 && (
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0 rounded-l bg-foreground/15"
+              style={{ width: `${(trim.in / duration) * 100}%` }}
+            />
+          )}
+          {trim && trim.out < duration && (
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 rounded-r bg-foreground/15"
+              style={{ width: `${((duration - trim.out) / duration) * 100}%` }}
+            />
+          )}
 
-        {/* track */}
-        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary/80"
-            style={{ width: `${Math.min(100, (t / duration) * 100)}%` }}
+          {/* track */}
+          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary/80"
+              style={{ width: `${Math.min(100, (t / duration) * 100)}%` }}
+            />
+          </div>
+
+          {/* event ticks — dimmed when outside the trim window */}
+          {ticks.map((tick, i) => (
+            <span
+              key={i}
+              className="absolute top-1/2 h-2.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+              style={{
+                left: `${(tick.t / duration) * 100}%`,
+                background: tick.color,
+                opacity: inTrim(tick.t) ? 1 : 0.3,
+              }}
+              title={`${tick.label} · ${formatOffset(tick.t)}`}
+            />
+          ))}
+
+          {/* playhead */}
+          <span
+            className="absolute top-1/2 z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-primary shadow-sm transition-transform group-hover:scale-110"
+            style={{ left: `${Math.min(100, (t / duration) * 100)}%` }}
           />
         </div>
 
-        {/* event ticks */}
-        {ticks.map((tick, i) => (
-          <span
-            key={i}
-            className="absolute top-1/2 h-2.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-            style={{ left: `${(tick.t / duration) * 100}%`, background: tick.color }}
-            title={`${tick.label} · ${formatOffset(tick.t)}`}
-          />
-        ))}
-
-        {/* playhead */}
-        <span
-          className="absolute top-1/2 z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-primary shadow-sm transition-transform group-hover:scale-110"
-          style={{ left: `${Math.min(100, (t / duration) * 100)}%` }}
-        />
+        {/* trim handles — sibling sliders, keyboard-adjustable */}
+        {trim &&
+          onTrimChange &&
+          (["in", "out"] as const).map((which) => (
+            <div
+              key={which}
+              role="slider"
+              aria-label={which === "in" ? "Trim start" : "Trim end"}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(duration / 1000)}
+              aria-valuenow={Math.round(trim[which] / 1000)}
+              aria-valuetext={formatOffset(trim[which])}
+              tabIndex={0}
+              className="absolute top-1/2 z-20 grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize place-items-center outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              style={{ left: `${(trim[which] / duration) * 100}%` }}
+              title={`${which === "in" ? "Trim start" : "Trim end"} · ${formatOffset(trim[which])} — drag or use ←/→`}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                trimDrag.current = which;
+                wrapRef.current?.setPointerCapture(e.pointerId);
+                clock.pause();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  nudgeTrim(which, -500);
+                } else if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  nudgeTrim(which, 500);
+                }
+              }}
+            >
+              <span className="h-5 w-[7px] rounded-[3px] border border-card bg-amber-500 shadow-sm" />
+            </div>
+          ))}
 
         {/* hover time tooltip */}
         {hoverT != null && (
           <span
-            className="pointer-events-none absolute -top-5 -translate-x-1/2 rounded bg-primary px-1.5 py-px font-mono text-[10px] text-primary-foreground"
+            className="pointer-events-none absolute -top-5 z-30 -translate-x-1/2 rounded bg-primary px-1.5 py-px font-mono text-[10px] text-primary-foreground"
             style={{ left: `${(hoverT / duration) * 100}%` }}
           >
             {formatOffset(hoverT)}

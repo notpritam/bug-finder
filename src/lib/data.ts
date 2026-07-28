@@ -163,7 +163,7 @@ const checkoutPicked: PickedElement[] = [
     selector: "#place-order",
     tag: "button",
     text: "Place order",
-    rect: { x: 0.27, y: 0.585, w: 0.17, h: 0.062 },
+    rect: { x: 0.165, y: 0.367, w: 0.403, h: 0.049 },
     t: 21000,
     note: "Button never leaves the spinner state after the request fails — no error shown to the user.",
     component: "<CheckoutSubmit>",
@@ -172,7 +172,7 @@ const checkoutPicked: PickedElement[] = [
     selector: ".order-summary .total",
     tag: "div",
     text: "$84.00",
-    rect: { x: 0.62, y: 0.31, w: 0.16, h: 0.05 },
+    rect: { x: 0.596, y: 0.233, w: 0.227, h: 0.035 },
     t: 22400,
     note: "Total is right, so the payload issue is server-side (user_id missing).",
     component: "<OrderSummary>",
@@ -243,7 +243,7 @@ const dashboardPicked: PickedElement[] = [
     selector: ".chart-panel[data-chart=trend]",
     tag: "section",
     text: "Weekly active users",
-    rect: { x: 0.2, y: 0.4, w: 0.6, h: 0.34 },
+    rect: { x: 0.163, y: 0.187, w: 0.824, h: 0.229 },
     t: 9000,
     note: "Whole panel white-screens; boundary fallback flashes then crashes again on refresh.",
     component: "<TrendChart>",
@@ -300,12 +300,67 @@ const settingsPicked: PickedElement[] = [
     selector: ".upload-progress",
     tag: "div",
     text: "Uploading… 62%",
-    rect: { x: 0.28, y: 0.42, w: 0.3, h: 0.05 },
+    rect: { x: 0.183, y: 0.17, w: 0.458, h: 0.058 },
     t: 12000,
     note: "Progress bar never resolves and there is no way to cancel or retry.",
     component: "<AvatarUploader>",
   },
 ];
+
+/* ------------------------------------------------------------------ *
+ * BF-105 — Appearance settings: theme flash (generic wireframe stage)
+ * ------------------------------------------------------------------ */
+const themeReplay: ReplayEvent[] = sortEvents([
+  { t: 0, kind: "nav", url: "https://app.acme.dev/settings/appearance" },
+  ...path([
+    { t: 400, x: 0.5, y: 0.3 },
+    { t: 1800, x: 0.34, y: 0.42 },
+  ]),
+  { t: 2000, kind: "click", x: 0.34, y: 0.42, target: "button#theme-dark" },
+  ...path([
+    { t: 2300, x: 0.34, y: 0.42 },
+    { t: 4200, x: 0.52, y: 0.2 },
+  ]),
+  { t: 4500, kind: "click", x: 0.52, y: 0.2, target: "a[href='/analytics']" },
+  { t: 5100, kind: "nav", url: "https://app.acme.dev/analytics" },
+  ...path([
+    { t: 5400, x: 0.52, y: 0.2 },
+    { t: 7600, x: 0.3, y: 0.2 },
+  ]),
+  { t: 7900, kind: "click", x: 0.3, y: 0.2, target: "a[href='/settings/appearance']" },
+  { t: 8500, kind: "nav", url: "https://app.acme.dev/settings/appearance" },
+  ...path([
+    { t: 8800, x: 0.3, y: 0.2 },
+    { t: 11500, x: 0.5, y: 0.5 },
+  ]),
+]);
+
+/* ------------------------------------------------------------------ *
+ * BF-106 — "/" shortcut leaks behind the invite modal (generic stage)
+ * ------------------------------------------------------------------ */
+const shortcutReplay: ReplayEvent[] = sortEvents([
+  { t: 0, kind: "nav", url: "https://app.acme.dev/analytics" },
+  ...path([
+    { t: 500, x: 0.5, y: 0.3 },
+    { t: 2200, x: 0.78, y: 0.18 },
+  ]),
+  { t: 2400, kind: "click", x: 0.78, y: 0.18, target: "button#invite-member" },
+  ...path([
+    { t: 2700, x: 0.78, y: 0.18 },
+    { t: 4600, x: 0.5, y: 0.45 },
+  ]),
+  { t: 5200, kind: "input", field: "search", value: "/dev@acme" },
+  ...path([
+    { t: 7000, x: 0.5, y: 0.45 },
+    { t: 9200, x: 0.42, y: 0.36 },
+  ]),
+  { t: 9500, kind: "click", x: 0.42, y: 0.36, target: "input#invite-email" },
+  { t: 10200, kind: "input", field: "invite-email", value: "dev@acme.dev" },
+  ...path([
+    { t: 12500, x: 0.42, y: 0.36 },
+    { t: 14200, x: 0.5, y: 0.55 },
+  ]),
+]);
 
 /* ------------------------------------------------------------------ *
  * Bug history helper
@@ -478,12 +533,16 @@ export const BUGS: Bug[] = [
     assignee: USERS[0],
     createdAt: NOW - 6 * 24 * 60 * MIN,
     updatedAt: NOW - 20 * 60 * MIN,
-    durationMs: 17000,
-    scenario: "settings",
-    replay: settingsReplay,
-    markers: [],
-    visits: [{ t: 0, url: "https://app.acme.dev/settings/appearance", title: "Appearance · Acme" }],
-    console: [{ t: 600, level: "info", text: "[theme] applied dark (from localStorage) after hydration" }],
+    durationMs: 12000,
+    scenario: "generic",
+    replay: themeReplay,
+    markers: [{ t: 5100, label: "Light flash on navigation", kind: "user" }],
+    visits: [
+      { t: 0, url: "https://app.acme.dev/settings/appearance", title: "Appearance · Acme" },
+      { t: 5100, url: "https://app.acme.dev/analytics", title: "Analytics · Acme" },
+      { t: 8500, url: "https://app.acme.dev/settings/appearance", title: "Appearance · Acme" },
+    ],
+    console: [{ t: 5600, level: "info", text: "[theme] applied dark (from localStorage) after hydration — 280ms after first paint" }],
     network: [],
     pickedElements: [],
     environment: { ...ENV_CHROME, browser: "Edge 138", os: "Windows 11" },
@@ -505,10 +564,10 @@ export const BUGS: Bug[] = [
     assignee: null,
     createdAt: NOW - 9 * 24 * 60 * MIN,
     updatedAt: NOW - 3 * 24 * 60 * MIN,
-    durationMs: 20500,
-    scenario: "dashboard",
-    replay: dashboardReplay,
-    markers: [],
+    durationMs: 15000,
+    scenario: "generic",
+    replay: shortcutReplay,
+    markers: [{ t: 5200, label: "'/' typed into background search", kind: "user" }],
     visits: [{ t: 0, url: "https://app.acme.dev/analytics", title: "Analytics · Acme" }],
     console: [],
     network: [],

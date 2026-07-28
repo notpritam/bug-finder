@@ -182,10 +182,14 @@ function BugRoute({
   onStatusChange: (id: string, status: BugStatus) => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { humanId } = useParams();
   const bug = bugs.find((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
   if (!bug) return <Navigate to="/bugs" replace />;
-  return <BugDetail bug={bug} onBack={() => navigate("/bugs")} onStatusChange={onStatusChange} />;
+  // Back keeps the caller's filters/search when we navigated here in-app; a deep link falls
+  // back to the plain list (going -1 there would leave the site).
+  const back = () => (location.key !== "default" ? navigate(-1) : navigate("/bugs"));
+  return <BugDetail bug={bug} onBack={back} onStatusChange={onStatusChange} />;
 }
 
 function DraftRoute({

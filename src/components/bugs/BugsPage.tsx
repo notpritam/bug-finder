@@ -2,7 +2,7 @@
 // ABOUTME: each with replay length, error count, reporter, and inline status.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, Bug as BugIcon, Clapperboard, Search } from "lucide-react";
+import { AlertTriangle, Bug as BugIcon, ChevronRight, Clapperboard, Search } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
 import { ME } from "@/lib/data";
@@ -75,12 +75,18 @@ export function BugsPage({
     }
   }, [bugs, view]);
 
+  // Status chips only exist on "All bugs" — sidebar views already constrain status, and two
+  // competing status filters could contradict each other.
+  const statusChipsVisible = view === "all";
+  const effectiveStatus = statusChipsVisible ? statusFilter : "all";
+
   const query = search.trim().toLowerCase();
-  const visible = useMemo(
+  // Everything except the status filter — the status-counts strip breaks THIS set down,
+  // so its numbers always sum to what's on screen.
+  const preStatus = useMemo(
     () =>
       scoped.filter(
         (b) =>
-          (statusFilter === "all" || b.status === statusFilter) &&
           (severityFilter === "all" || b.severity === severityFilter) &&
           (query === "" ||
             b.title.toLowerCase().includes(query) ||
@@ -88,14 +94,21 @@ export function BugsPage({
             b.pageUrl.toLowerCase().includes(query) ||
             b.tags.some((t) => t.toLowerCase().includes(query))),
       ),
-    [scoped, statusFilter, severityFilter, query],
+    [scoped, severityFilter, query],
+  );
+  const visible = useMemo(
+    () => preStatus.filter((b) => effectiveStatus === "all" || b.status === effectiveStatus),
+    [preStatus, effectiveStatus],
   );
 
   const statusCounts = useMemo(() => {
     const counts = new Map<BugStatus, number>();
-    for (const b of scoped) counts.set(b.status, (counts.get(b.status) ?? 0) + 1);
+    for (const b of preStatus) counts.set(b.status, (counts.get(b.status) ?? 0) + 1);
     return BUG_STATUS_ORDER.map((s) => ({ status: s, count: counts.get(s) ?? 0 })).filter((x) => x.count > 0);
-  }, [scoped]);
+  }, [preStatus]);
+
+  const filtersActive = effectiveStatus !== "all" || severityFilter !== "all" || query !== "";
+  const clearFilters = () => setParams(new URLSearchParams(), { replace: true });
 
   useEffect(() => {
     setActiveIndex((i) => (i >= visible.length ? visible.length - 1 : i));
@@ -104,21 +117,25 @@ export function BugsPage({
     activeRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
-  // "/" focuses search, ↑/↓ move the highlight, ↵ opens.
+  // "/" focuses search, ↑/↓ move the highlight (from anywhere that isn't a text field —
+  // arrows blur a focused chip so the next ↵ opens the highlighted row), ↵ opens.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
-      const allowNav = t === searchRef.current || t === document.body || t === document.documentElement;
+      const allowNav = t === searchRef.current || !isTypingTarget(t);
+      const enterSafe = t === searchRef.current || t === document.body || t === document.documentElement;
       if (e.key === "/" && !isTypingTarget(t)) {
         e.preventDefault();
         searchRef.current?.focus();
       } else if (e.key === "ArrowDown" && allowNav) {
         e.preventDefault();
+        if (t instanceof HTMLElement && t !== searchRef.current) t.blur();
         setActiveIndex((i) => Math.min(i + 1, visible.length - 1));
       } else if (e.key === "ArrowUp" && allowNav) {
         e.preventDefault();
+        if (t instanceof HTMLElement && t !== searchRef.current) t.blur();
         setActiveIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === "Enter" && allowNav && activeIndex >= 0 && visible[activeIndex]) {
+      } else if (e.key === "Enter" && enterSafe && activeIndex >= 0 && visible[activeIndex]) {
         e.preventDefault();
         onOpenBug(visible[activeIndex].id);
       } else if (e.key === "Escape" && t === searchRef.current) {
@@ -156,15 +173,17 @@ export function BugsPage({
         </div>
 
         <div className="mb-5 space-y-2">
-          <FilterChips
-            label="Status"
-            value={statusFilter}
-            options={[
-              { value: "all" as StatusFilter, label: "All" },
-              ...BUG_STATUS_ORDER.map((s) => ({ value: s as StatusFilter, label: BUG_STATUS_META[s].label })),
-            ]}
-            onChange={setStatusFilter}
-          />
+          {statusChipsVisible && (
+            <FilterChips
+              label="Status"
+              value={statusFilter}
+              options={[
+                { value: "all" as StatusFilter, label: "All" },
+                ...BUG_STATUS_ORDER.map((s) => ({ value: s as StatusFilter, label: BUG_STATUS_META[s].label })),
+              ]}
+              onChange={setStatusFilter}
+            />
+          )}
           <FilterChips
             label="Severity"
             value={severityFilter}
@@ -185,7 +204,7 @@ export function BugsPage({
               ? `${scoped.length} ${scoped.length === 1 ? "bug" : "bugs"}`
               : `${visible.length} of ${scoped.length}`}
           </p>
-          {statusCounts.length > 1 && (
+          {statusChipsVisible && statusCounts.length > 1 && (
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               {statusCounts.map(({ status, count }) => (
                 <button
@@ -200,6 +219,10 @@ export function BugsPage({
               ))}
             </div>
           )}
+          <span className="ml-auto hidden items-center gap-1 text-[10.5px] text-muted-foreground/70 lg:flex">
+            <kbd className="rounded border border-border/60 bg-muted px-1 font-mono">↑↓</kbd> navigate
+            <kbd className="rounded border border-border/60 bg-muted px-1 font-mono">↵</kbd> open
+          </span>
         </div>
 
         <ul className="flex flex-col gap-1.5">
@@ -210,9 +233,9 @@ export function BugsPage({
                 key={bug.id}
                 ref={i === activeIndex ? activeRowRef : null}
                 className={cn(
-                  "card-rise flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors",
+                  "card-rise group flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors",
                   i === activeIndex
-                    ? "border-primary/60 ring-1 ring-primary/30"
+                    ? "border-primary/60 shadow-[inset_3px_0_0_0_var(--primary)] ring-1 ring-primary/30"
                     : "border-border/60 hover:border-primary/40 hover:bg-accent/40",
                 )}
                 style={{ "--stagger": i } as React.CSSProperties}
@@ -220,7 +243,7 @@ export function BugsPage({
                 <button
                   type="button"
                   onClick={() => onOpenBug(bug.id)}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <span className="w-14 shrink-0 font-mono text-[11px] font-medium tracking-wide text-muted-foreground">
                     {bug.humanId}
@@ -246,22 +269,34 @@ export function BugsPage({
                   <span className="hidden w-8 shrink-0 justify-center sm:flex">
                     <UserAvatar name={bug.reporter.name} seed={bug.reporter.id} size={24} />
                   </span>
-                  <span className="w-14 shrink-0 text-right text-[11px] text-muted-foreground">
+                  <span className="hidden w-14 shrink-0 text-right text-[11px] text-muted-foreground md:block">
                     {relativeTime(bug.createdAt)}
                   </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
                 </button>
                 <InlineStatus status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
               </li>
             );
           })}
           {visible.length === 0 && (
-            <p className="py-10 text-center text-[13px] text-muted-foreground">
-              {scoped.length === 0
-                ? "No bugs in this view."
-                : query
-                  ? "No bugs match your search."
-                  : "No bugs match these filters."}
-            </p>
+            <div className="py-10 text-center">
+              <p className="text-[13px] text-muted-foreground">
+                {scoped.length === 0
+                  ? "No bugs in this view."
+                  : query
+                    ? `No bugs match "${search.trim()}"${severityFilter !== "all" ? ` with severity ${severityFilter}` : ""}.`
+                    : "No bugs match these filters."}
+              </p>
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground transition hover:opacity-90"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           )}
         </ul>
       </div>

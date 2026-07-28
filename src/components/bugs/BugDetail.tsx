@@ -57,21 +57,24 @@ export function BugDetail({
   }, [clock.t, clock.playing, setParams]);
 
   // Space toggles playback anywhere on the page (except in form fields).
+  // Esc peels back one layer: clear an element highlight first, then leave the bug.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
       const typing =
         t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
-      if (e.key === " " && !typing) {
+      if (typing) return;
+      if (e.key === " ") {
         e.preventDefault();
         clock.toggle();
-      } else if (e.key === "Escape" && !typing) {
-        onBack();
+      } else if (e.key === "Escape") {
+        if (selectedPick != null) setSelectedPick(null);
+        else onBack();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clock, onBack]);
+  }, [clock, onBack, selectedPick]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
@@ -129,15 +132,29 @@ export function BugDetail({
         </header>
 
         {/* Replay + inspector — the core */}
-        <div className="soft-fade grid h-[max(480px,calc(100vh-300px))] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_clamp(340px,30%,560px)]">
-          <ReplayPlayer bug={bug} clock={clock} highlightRect={highlightRect} />
-          <InspectorRail bug={bug} clock={clock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
+        <div className="soft-fade grid h-auto grid-cols-1 gap-4 lg:h-[max(480px,calc(100vh-300px))] lg:grid-cols-[minmax(0,1fr)_clamp(340px,30%,560px)]">
+          <div className="relative h-[min(64vh,580px)] lg:h-auto lg:min-h-0">
+            <ReplayPlayer bug={bug} clock={clock} highlightRect={highlightRect} />
+            {selectedPick != null && (
+              <button
+                type="button"
+                onClick={() => setSelectedPick(null)}
+                className="absolute right-3 top-12 z-40 inline-flex items-center gap-1 rounded-full bg-foreground/80 px-2.5 py-1 text-[11px] font-semibold text-background shadow-pop transition hover:bg-foreground"
+                title="Clear the element highlight (esc)"
+              >
+                ✕ Clear highlight
+              </button>
+            )}
+          </div>
+          <div className="h-[440px] lg:h-auto lg:min-h-0">
+            <InspectorRail bug={bug} clock={clock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
+          </div>
         </div>
 
         {/* Below-the-fold cards */}
         <div className="grid grid-cols-1 gap-4 pb-10 lg:grid-cols-3">
           <Card title="Description" className="lg:col-span-2">
-            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">{bug.description}</p>
+            <p className="max-w-[75ch] whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">{bug.description}</p>
             {bug.notes && (
               <div className="mt-3 flex gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 p-3">
                 <StickyNote className="mt-0.5 size-4 shrink-0 text-amber-600" />

@@ -1,7 +1,7 @@
 // ABOUTME: Review a captured session before filing it — play/scrub the replay, trim it with
 // ABOUTME: handles, add flags at timestamps, inspect evidence, fill the report, then submit.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Flag, Scissors, Send, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Trash2, X } from "lucide-react";
 import type { Bug, BugSeverity, Draft } from "@/lib/types";
 import { cn, formatDuration, formatOffset, hostOf } from "@/lib/utils";
 import { BUG_SEVERITY_ORDER } from "@/components/common/bits";
@@ -67,30 +67,81 @@ export function DraftReview({
     }
   }, [clock, clock.t, clock.playing, trim.in, trim.out]);
 
-  // Space toggles playback here too.
+  // Wrap the clock so playing from the trim edge restarts inside the window instead of dead-ending.
+  const draftClock = useMemo(() => {
+    const playFromWindow = () => {
+      if (clock.t >= trim.out - 50 || clock.t < trim.in) clock.seek(trim.in);
+      clock.play();
+    };
+    return {
+      ...clock,
+      play: playFromWindow,
+      toggle: () => (clock.playing ? clock.pause() : playFromWindow()),
+    };
+  }, [clock, trim.in, trim.out]);
+
+  // Space toggles playback; Esc goes back to the drafts list.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target;
       const typing =
         el instanceof HTMLElement &&
         (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
-      if (e.key === " " && !typing) {
+      if (typing) return;
+      if (e.key === " ") {
         e.preventDefault();
-        clock.toggle();
+        draftClock.toggle();
+      } else if (e.key === "Escape") {
+        onBack();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clock]);
+  }, [draftClock, onBack]);
+
+  // What the current trim would silently drop — surfaced, never silent.
+  const dropped = useMemo(() => {
+    const outside = (t: number) => t < trim.in || t > trim.out;
+    return {
+      flags: draft.markers.filter((m) => outside(m.t)).length,
+      errors: draft.console.filter((c) => c.level === "error" && outside(c.t)).length,
+      requests: draft.network.filter((n) => outside(n.t)).length,
+      elements: draft.pickedElements.filter((p) => outside(p.t ?? 0)).length,
+    };
+  }, [draft, trim.in, trim.out]);
+  const droppedSummary = [
+    dropped.flags > 0 && `${dropped.flags} ${dropped.flags === 1 ? "flag" : "flags"}`,
+    dropped.errors > 0 && `${dropped.errors} console ${dropped.errors === 1 ? "error" : "errors"}`,
+    dropped.requests > 0 && `${dropped.requests} network ${dropped.requests === 1 ? "call" : "calls"}`,
+    dropped.elements > 0 && `${dropped.elements} picked ${dropped.elements === 1 ? "element" : "elements"}`,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   const highlightRect = selectedPick != null ? (draft.pickedElements[selectedPick]?.rect ?? null) : null;
 
   const addFlag = () => {
     const t = Math.round(clock.t);
-    onChange({ ...draft, markers: [...draft.markers, { t, label: "Flagged moment", kind: "user" }] });
+    // Empty label so the "What happens here?" placeholder invites a real description.
+    onChange({ ...draft, markers: [...draft.markers, { t, kind: "user" }] });
   };
 
   const canSubmit = (draft.title ?? "").trim().length > 0;
+
+  const handleSubmit = () => {
+    if (
+      droppedSummary &&
+      !window.confirm(
+        `Your trim drops ${droppedSummary} from the recording.\n\nSubmit anyway? (Reset trim first if you want to keep them.)`,
+      )
+    )
+      return;
+    onSubmit(draft);
+  };
+
+  const sortedMarkers = draft.markers
+    .map((m, index) => ({ ...m, index }))
+    .sort((a, b) => a.t - b.t);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
@@ -117,15 +168,17 @@ export function DraftReview({
           </span>
         </div>
 
-        <div className="soft-fade grid h-[max(460px,calc(100vh-330px))] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_clamp(340px,30%,560px)]">
+        <div className="soft-fade grid h-auto grid-cols-1 gap-4 lg:h-[max(460px,calc(100vh-330px))] lg:grid-cols-[minmax(0,1fr)_clamp(340px,30%,560px)]">
           <div className="flex min-h-0 flex-col gap-2.5">
-            <ReplayPlayer
-              bug={bugView}
-              clock={clock}
-              highlightRect={highlightRect}
-              trim={trim}
-              onTrimChange={(next) => onChange({ ...draft, trim: next })}
-            />
+            <div className="h-[min(62vh,560px)] lg:h-auto lg:min-h-0 lg:flex-1">
+              <ReplayPlayer
+                bug={bugView}
+                clock={draftClock}
+                highlightRect={highlightRect}
+                trim={trim}
+                onTrimChange={(next) => onChange({ ...draft, trim: next })}
+              />
+            </div>
             {/* Review toolbar — everything acts at the playhead */}
             <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-card">
               <button
@@ -149,13 +202,19 @@ export function DraftReview({
                   <X className="size-3.5" /> Reset trim
                 </button>
               )}
+              {droppedSummary && (
+                <span className="flex w-full items-center gap-1.5 text-[11.5px] font-medium text-amber-700">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  This trim drops {droppedSummary} — they won't be in the filed bug.
+                </span>
+              )}
             </div>
           </div>
 
           <div className="flex min-h-0 flex-col gap-4">
             <ReportForm draft={draft} onChange={onChange} />
-            <div className="min-h-0 flex-1">
-              <InspectorRail bug={bugView} clock={clock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
+            <div className="h-[420px] lg:h-auto lg:min-h-0 lg:flex-1">
+              <InspectorRail bug={bugView} clock={draftClock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
             </div>
           </div>
         </div>
@@ -167,43 +226,51 @@ export function DraftReview({
               Flags ({draft.markers.length})
             </h2>
             <ul className="flex flex-col gap-1.5">
-              {draft.markers.map((m, i) => (
-                <li key={`${m.t}-${i}`} className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => clock.seek(m.t)}
-                    className="inline-flex w-14 items-center gap-1 font-mono text-[11.5px] font-semibold text-foreground/80 transition-colors hover:text-foreground"
-                    title="Jump to this moment"
-                  >
-                    <Flag
-                      className="size-3"
-                      style={{ color: m.kind === "error" ? "var(--ev-error)" : "var(--ev-marker)" }}
-                      fill="currentColor"
+              {sortedMarkers.map((m) => {
+                const outside = m.t < trim.in || m.t > trim.out;
+                return (
+                  <li key={`${m.t}-${m.index}`} className={cn("flex items-center gap-2", outside && "opacity-55")}>
+                    <button
+                      type="button"
+                      onClick={() => clock.seek(m.t)}
+                      className="inline-flex w-14 items-center gap-1 font-mono text-[11.5px] font-semibold text-foreground/80 transition-colors hover:text-foreground"
+                      title="Jump to this moment"
+                    >
+                      <Flag
+                        className="size-3"
+                        style={{ color: m.kind === "error" ? "var(--ev-error)" : "var(--ev-marker)" }}
+                        fill="currentColor"
+                      />
+                      {formatOffset(m.t)}
+                    </button>
+                    <input
+                      type="text"
+                      value={m.label ?? ""}
+                      placeholder="What happens here?"
+                      onChange={(e) =>
+                        onChange({
+                          ...draft,
+                          markers: draft.markers.map((mm, ii) => (ii === m.index ? { ...mm, label: e.target.value } : mm)),
+                        })
+                      }
+                      className="h-7 flex-1 rounded-lg border border-border/60 bg-card px-2 text-[12px] outline-none transition-colors focus:border-primary/50"
                     />
-                    {formatOffset(m.t)}
-                  </button>
-                  <input
-                    type="text"
-                    value={m.label ?? ""}
-                    placeholder="What happens here?"
-                    onChange={(e) =>
-                      onChange({
-                        ...draft,
-                        markers: draft.markers.map((mm, ii) => (ii === i ? { ...mm, label: e.target.value } : mm)),
-                      })
-                    }
-                    className="h-7 flex-1 rounded-lg border border-border/60 bg-card px-2 text-[12px] outline-none transition-colors focus:border-primary/50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...draft, markers: draft.markers.filter((_, ii) => ii !== i) })}
-                    className="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
-                    title="Remove flag"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </li>
-              ))}
+                    {outside && (
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700" title="Outside the trim window — will be dropped on submit">
+                        outside trim
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...draft, markers: draft.markers.filter((_, ii) => ii !== m.index) })}
+                      className="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+                      title="Remove flag"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
@@ -213,7 +280,7 @@ export function DraftReview({
           <button
             type="button"
             disabled={!canSubmit}
-            onClick={() => onSubmit(draft)}
+            onClick={handleSubmit}
             title={canSubmit ? "File this bug" : "Add a title first"}
             className={cn(
               "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-bold transition",
@@ -305,6 +372,19 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
           className="h-20 w-full resize-none rounded-lg border border-border/60 bg-card p-2.5 text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
         />
       </div>
+      {draft.notes != null && (
+        <div>
+          <label htmlFor="draft-notes" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+            Notes from the recording
+          </label>
+          <textarea
+            id="draft-notes"
+            value={draft.notes}
+            onChange={(e) => onChange({ ...draft, notes: e.target.value })}
+            className="h-14 w-full resize-none rounded-lg border border-amber-200/80 bg-amber-50/50 p-2.5 text-[12px] leading-relaxed outline-none focus:border-amber-400"
+          />
+        </div>
+      )}
     </section>
   );
 }
