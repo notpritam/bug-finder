@@ -101,7 +101,7 @@ export function BugDetail({
         </header>
 
         {/* Replay + inspector — the core */}
-        <div className="soft-fade grid h-[max(480px,calc(100vh-300px))] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+        <div className="soft-fade grid h-[max(480px,calc(100vh-300px))] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_clamp(340px,30%,560px)]">
           <ReplayPlayer bug={bug} clock={clock} highlightRect={highlightRect} />
           <InspectorRail bug={bug} clock={clock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
         </div>

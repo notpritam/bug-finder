@@ -460,14 +460,14 @@ export function InspectorRail({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card">
-      <div className="flex shrink-0 items-center border-b border-border/60 px-1.5 pt-1.5">
+      <div className="flex shrink-0 items-center overflow-x-auto scroll-thin border-b border-border/60 px-1.5 pt-1.5">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
             className={cn(
-              "relative flex items-center gap-1.5 rounded-t-md px-2.5 py-2 text-[11.5px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+              "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md px-2.5 py-2 text-[11.5px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
               tab === t.key ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
