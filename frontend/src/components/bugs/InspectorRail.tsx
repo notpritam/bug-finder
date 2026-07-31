@@ -9,6 +9,8 @@ import {
   Crosshair,
   Globe,
   Info,
+  Maximize2,
+  Minimize2,
   MousePointerClick,
   Navigation,
   Search,
@@ -907,6 +909,22 @@ export function InspectorRail({
   onSelectPick: (i: number | null) => void;
 }) {
   const [tab, setTab] = useState<Tab>("activity");
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === rootRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void el.requestFullscreen().catch(() => {});
+  };
+
   const errorCount = bug.console.filter((c) => c.level === "error").length;
   const failedRequests = bug.network.filter((n) => n.status >= 400 || n.status === 0).length;
 
@@ -918,7 +936,10 @@ export function InspectorRail({
   const redBadge: Partial<Record<Tab, boolean>> = { console: true, network: true };
 
   return (
-    <div className="@container flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card">
+    <div
+      ref={rootRef}
+      className="@container flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card [&:fullscreen]:rounded-none"
+    >
       {/* Labels collapse to icons in a narrow rail so every tab (incl. Info) stays reachable. */}
       <div className="flex shrink-0 items-center border-b border-border/60 px-1.5 pt-1.5">
         {TABS.map((t) => (
@@ -948,6 +969,16 @@ export function InspectorRail({
             {tab === t.key && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-primary" />}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="ml-auto grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-label={fullscreen ? "Exit fullscreen" : "Expand inspector to fullscreen"}
+          data-testid="inspector-fullscreen-btn"
+        >
+          {fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
         {tab === "activity" && <ActivityList bug={bug} clock={clock} />}

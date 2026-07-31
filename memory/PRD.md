@@ -117,3 +117,7 @@
 - While searching, JSON Preview switches from tree to highlighted source view so every match is visible; clears back to tree.
 - data-testids: network-body-search-input / -count / -prev / -next.
 - Verified via screenshot automation (search "event_id" → 1/2 → 2/2 → Enter cycles; headers search works).
+
+## 2026-06 (fork): Inspector fullscreen expand
+- Added Maximize2/Minimize2 fullscreen toggle to InspectorRail tab bar (same pattern as ReplayPlayer), using native Fullscreen API on the rail container; syncs state on fullscreenchange (Esc-safe). data-testid: inspector-fullscreen-btn.
+- Verified: enter/exit fullscreen + network detail interaction inside fullscreen via screenshot automation.
