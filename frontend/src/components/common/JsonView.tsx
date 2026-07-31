@@ -80,14 +80,14 @@ function tokenize(pretty: string): Token[] {
   return out;
 }
 
-const KIND_CLASS: Record<Token["kind"], string> = {
-  key: "text-[color:var(--json-key)]",
-  string: "text-[color:var(--json-string)]",
-  number: "text-[color:var(--json-number)]",
-  boolean: "text-[color:var(--json-boolean)]",
-  null: "text-[color:var(--json-null)]",
-  punct: "text-[color:var(--json-punct)]",
-  space: "",
+const KIND_COLOR: Record<Token["kind"], string> = {
+  key: "var(--json-key)",
+  string: "var(--json-string)",
+  number: "var(--json-number)",
+  boolean: "var(--json-boolean)",
+  null: "var(--json-null)",
+  punct: "var(--json-punct)",
+  space: "inherit",
 };
 
 /** Wrap every case-insensitive occurrence of `needle` in `text` with <mark>. */
@@ -128,13 +128,14 @@ export function JsonView({
   return (
     <pre
       className={cn(
-        "max-h-64 overflow-auto scroll-thin rounded bg-[color:var(--json-bg)] p-2 font-mono text-[10.5px] leading-relaxed",
+        "max-h-64 overflow-auto scroll-thin rounded p-2 font-mono text-[10.5px] leading-relaxed",
         className,
       )}
+      style={{ background: "var(--json-bg)" }}
     >
       <code>
         {tokens.map((tok, i) => (
-          <span key={i} className={KIND_CLASS[tok.kind]}>
+          <span key={i} style={{ color: KIND_COLOR[tok.kind] }}>
             {search ? withHighlights(tok.text, search) : tok.text}
           </span>
         ))}
@@ -156,9 +157,10 @@ export function TextView({
   return (
     <pre
       className={cn(
-        "max-h-64 overflow-auto scroll-thin whitespace-pre-wrap break-words rounded bg-[color:var(--json-bg)] p-2 font-mono text-[10.5px] leading-relaxed text-foreground/85",
+        "max-h-64 overflow-auto scroll-thin whitespace-pre-wrap break-words rounded p-2 font-mono text-[10.5px] leading-relaxed text-foreground/85",
         className,
       )}
+      style={{ background: "var(--json-bg)" }}
     >
       {search ? withHighlights(text, search) : text}
     </pre>

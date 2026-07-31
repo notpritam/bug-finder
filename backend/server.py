@@ -120,18 +120,29 @@ class CommentOut(BaseModel):
 
 # ------------------- AI draft-fill (unchanged) -------------------
 
-SYSTEM_PROMPT = """You are an expert QA engineer that turns raw bug-recording evidence \
-into a clean, filed bug report. You will be given evidence from a browser session capture: \
-the reporter's rough notes, console errors, failed network calls, elements they picked, \
-and the page URL. Return a JSON object that fills the bug form for them.
+SYSTEM_PROMPT = """You are an expert QA engineer helping a reporter file a bug. \
+Your job is to REFINE what the reporter has already typed and FILL IN what they haven't — \
+not to invent a new report from scratch.
 
-Rules:
-- Title: one crisp line, imperative, <= 90 chars. No trailing period. Include the surface \
-  ("Checkout: totals wrong when...") when the page context makes it clear.
-- Description: structured markdown with three sections in this exact order:
+You will receive:
+- REPORTER_NOTES and CURRENT_DRAFT_VALUES: this is the reporter's own intent and phrasing. \
+  Treat it as authoritative. Never contradict it. Preserve their words, tone, and \
+  specific details (product names, page names, numbers, error strings they mention).
+- Captured evidence (console errors, failed network calls, picked elements, URL). \
+  Use this only to sharpen, structure, and factually extend what the reporter has said.
+
+If a field is missing in CURRENT_DRAFT_VALUES, generate a value for it based on the \
+reporter's notes plus the evidence. If a field is present, either return the same \
+string (verbatim) or a lightly polished version — never a rewrite that loses the \
+reporter's key details.
+
+Rules per field:
+- Title: one crisp line, imperative, <= 90 chars, no trailing period. Reuse the \
+  reporter's key nouns/verbs where possible.
+- Description: structured markdown, exactly this order:
     **Expected**\\n<one or two sentences>\\n\\n**Actual**\\n<one or two sentences>\\n\\n\
     **Steps to reproduce**\\n1. ...\\n2. ...\\n3. ...
-  Use only what's supported by the evidence. Do not invent steps.
+  Do not invent steps the evidence + reporter notes don't support.
 - Severity: one of low, medium, high, critical.
     * critical: data loss, cannot complete purchase/login, security issue.
     * high:     core flow broken, blocking most users.
@@ -139,8 +150,7 @@ Rules:
     * low:      cosmetic / minor.
 - Tags: pick 1-4 from the provided allowedTags list (verbatim). Empty list if none fit.
 - Assignee: pick the single team member (by id) whose role/team best matches the bug \
-  domain — e.g. billing bug → payments engineer, UI bug → frontend engineer. Set \
-  assigneeId to null if no one clearly fits. Give a very short reason (one clause).
+  domain. Set assigneeId to null if no one clearly fits. Give a very short reason.
 - Initiative: pick from the provided initiatives list if one obviously fits, else null.
 
 Output ONLY a single JSON object with keys: title, description, severity, tags, \
@@ -181,13 +191,12 @@ def build_evidence(req: DraftFillRequest) -> str:
         for m in req.team
     ]
     parts.append("TEAM:\n" + ("\n".join(team_lines) if team_lines else "(none)"))
+    parts.append(f"CURRENT_DRAFT_VALUES: {json.dumps(req.current)[:2000]}")
     if req.field:
         parts.append(
             f"ONLY_FILL_FIELD: {req.field}. "
             + SINGLE_FIELD_INSTRUCTION.get(req.field, "")
         )
-        if req.current:
-            parts.append(f"CURRENT_DRAFT_VALUES: {json.dumps(req.current)[:2000]}")
     return "\n\n".join(parts)
 
 

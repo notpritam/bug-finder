@@ -51,22 +51,29 @@ export function DraftReview({
         field,
       });
       const patch: Partial<Draft> = {};
-      if (field === "all" || field === "title") {
+      // "fill all" — only fill fields the user hasn't touched, so we never overwrite
+      // what they typed. Per-field magic buttons DO replace, since the user explicitly
+      // asked to regenerate that field.
+      const isAll = field === "all";
+      const isEmpty = (v: unknown) =>
+        v == null || (typeof v === "string" && v.trim() === "") || (Array.isArray(v) && v.length === 0);
+
+      if ((isAll && isEmpty(draft.title)) || field === "title") {
         if (res.title) patch.title = res.title;
       }
-      if (field === "all" || field === "description") {
+      if ((isAll && isEmpty(draft.description)) || field === "description") {
         if (res.description) patch.description = res.description;
       }
-      if (field === "all" || field === "severity") {
+      if ((isAll && isEmpty(draft.severity)) || field === "severity") {
         if (res.severity) patch.severity = res.severity as BugSeverity;
       }
-      if (field === "all" || field === "tags") {
+      if ((isAll && isEmpty(draft.tags)) || field === "tags") {
         if (res.tags?.length) patch.tags = res.tags;
       }
-      if (field === "all" || field === "assignee") {
+      if ((isAll && isEmpty(draft.assigneeId)) || field === "assignee") {
         if (res.assigneeId !== undefined) patch.assigneeId = res.assigneeId ?? null;
       }
-      if (field === "all" || field === "initiative") {
+      if ((isAll && isEmpty(draft.initiative)) || field === "initiative") {
         if (res.initiative) patch.initiative = res.initiative;
       }
       if (res.assigneeReason && (field === "all" || field === "assignee")) {
@@ -251,7 +258,7 @@ export function DraftReview({
                 type="button"
                 onClick={() => void runAiFill("all")}
                 disabled={aiBusy !== null}
-                title="Let AI parse your notes + console/network errors and fill the whole report"
+                title="Fill any EMPTY fields based on your notes + captured evidence. Won't overwrite anything you've already typed — use the per-field ✨ buttons to regenerate a single field."
                 data-testid="draft-ai-fill-all-btn"
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition",

@@ -58,12 +58,14 @@ export async function aiDraftFill(opts: {
       team: r.team,
     })),
     field: opts.field && opts.field !== "all" ? opts.field : null,
+    // Always send the current draft — Claude uses it as the reporter's own words.
     current: {
-      title: draft.title,
-      description: draft.description,
-      severity: draft.severity,
-      tags: draft.tags,
-      initiative: draft.initiative,
+      title: draft.title ?? "",
+      description: draft.description ?? "",
+      severity: draft.severity ?? null,
+      tags: draft.tags ?? [],
+      initiative: draft.initiative ?? "",
+      assigneeId: draft.assigneeId ?? null,
     },
   };
 
