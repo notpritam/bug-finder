@@ -359,3 +359,13 @@
 .json-view .jv-chevron {
   opacity: 0.55;
 }
+
+/* Active find-in-response match — DevTools-style orange, distinct from other matches. */
+mark.mark-active {
+  background: #fb923c !important;
+  color: #1c1917 !important;
+}
+.dark mark.mark-active {
+  background: #f97316 !important;
+  color: #0c0a09 !important;
+}

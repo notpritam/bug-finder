@@ -5,6 +5,7 @@ import {
   Activity,
   AlertTriangle,
   ChevronDown,
+  ChevronUp,
   Crosshair,
   Globe,
   Info,
@@ -485,6 +486,31 @@ function NetworkDetail({
   const hasRequestBody = (entry.requestBody ?? "").trim().length > 0;
   const hasResponseBody = (entry.responseBody ?? "").trim().length > 0;
 
+  // In-detail search — like DevTools' find-in-response. Falls back to the list query.
+  const [localQ, setLocalQ] = useState("");
+  const [matchIdx, setMatchIdx] = useState(0);
+  const [matchCount, setMatchCount] = useState(0);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const q = localQ.trim() !== "" ? localQ : query;
+
+  useEffect(() => setMatchIdx(0), [localQ, tab]);
+
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+    const marks = Array.from(root.querySelectorAll("mark"));
+    setMatchCount(marks.length);
+    if (marks.length === 0) return;
+    const i = Math.min(matchIdx, marks.length - 1);
+    marks.forEach((m, j) => m.classList.toggle("mark-active", j === i));
+    marks[i].scrollIntoView({ block: "nearest" });
+  }, [q, matchIdx, tab, entry]);
+
+  const step = (dir: 1 | -1) => {
+    if (matchCount === 0) return;
+    setMatchIdx((i) => (i + dir + matchCount) % matchCount);
+  };
+
   return (
     <div className="mx-2 mb-1.5 space-y-2 rounded-md border border-border/60 bg-muted/30 p-2.5">
       {/* URL row */}
@@ -521,18 +547,80 @@ function NetworkDetail({
         ))}
       </div>
 
+      {/* Find in response — searches keys, values, headers and raw body of this call. */}
+      <div className="flex items-center gap-1">
+        <label className="relative flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 focus-within:border-primary/50">
+          <Search className="size-3 shrink-0 text-muted-foreground" />
+          <input
+            value={localQ}
+            onChange={(e) => setLocalQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                step(e.shiftKey ? -1 : 1);
+              }
+            }}
+            placeholder="Search in response…"
+            aria-label="Search within this request's headers and bodies"
+            className="h-6 min-w-0 flex-1 border-none bg-transparent text-[11px] outline-none placeholder:text-muted-foreground/60"
+            data-testid="network-body-search-input"
+          />
+          {q && (
+            <span
+              className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
+              data-testid="network-body-search-count"
+            >
+              {matchCount ? `${matchIdx + 1}/${matchCount}` : "0/0"}
+            </span>
+          )}
+          {localQ && (
+            <button
+              type="button"
+              onClick={() => setLocalQ("")}
+              aria-label="Clear response search"
+              className="grid size-4 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          )}
+        </label>
+        <button
+          type="button"
+          onClick={() => step(-1)}
+          disabled={matchCount === 0}
+          aria-label="Previous match"
+          title="Previous match (Shift+Enter)"
+          className="grid size-6 shrink-0 place-items-center rounded-md border border-border/60 bg-card text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+          data-testid="network-body-search-prev"
+        >
+          <ChevronUp className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => step(1)}
+          disabled={matchCount === 0}
+          aria-label="Next match"
+          title="Next match (Enter)"
+          className="grid size-6 shrink-0 place-items-center rounded-md border border-border/60 bg-card text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+          data-testid="network-body-search-next"
+        >
+          <ChevronDown className="size-3.5" />
+        </button>
+      </div>
+
+      <div ref={bodyRef} className="space-y-2">
       {tab === "headers" && (
         <div className="space-y-3">
           <DetailSection title="Request headers">
             {entry.requestHeaders && Object.keys(entry.requestHeaders).length > 0 ? (
-              <HeaderList headers={entry.requestHeaders} query={query} />
+              <HeaderList headers={entry.requestHeaders} query={q} />
             ) : (
               <EmptyLine label="No request headers captured." />
             )}
           </DetailSection>
           <DetailSection title="Response headers">
             {entry.responseHeaders && Object.keys(entry.responseHeaders).length > 0 ? (
-              <HeaderList headers={entry.responseHeaders} query={query} />
+              <HeaderList headers={entry.responseHeaders} query={q} />
             ) : (
               <EmptyLine label="No response headers captured." />
             )}
@@ -558,11 +646,11 @@ function NetworkDetail({
               <EmptyLine label="No request body." />
             ) : requestJson != null ? (
               <PayloadWithCopy raw={entry.requestBody ?? ""}>
-                <JsonView data={requestJson} search={query} />
+                {q ? <JsonView data={requestJson} search={q} /> : <JsonTree data={requestJson} />}
               </PayloadWithCopy>
             ) : (
               <PayloadWithCopy raw={entry.requestBody ?? ""}>
-                <TextView text={entry.requestBody ?? ""} search={query} />
+                <TextView text={entry.requestBody ?? ""} search={q} />
               </PayloadWithCopy>
             )}
           </DetailSection>
@@ -582,11 +670,11 @@ function NetworkDetail({
               <EmptyLine label="No response body." />
             ) : responseJson != null ? (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
-                <JsonTree data={responseJson} />
+                {q ? <JsonView data={responseJson} search={q} /> : <JsonTree data={responseJson} />}
               </PayloadWithCopy>
             ) : (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
-                <TextView text={entry.responseBody ?? ""} search={query} />
+                <TextView text={entry.responseBody ?? ""} search={q} />
               </PayloadWithCopy>
             )}
           </DetailSection>
@@ -600,16 +688,17 @@ function NetworkDetail({
               <EmptyLine label="No response body." />
             ) : responseJson != null ? (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
-                <JsonView data={responseJson} search={query} />
+                <JsonView data={responseJson} search={q} />
               </PayloadWithCopy>
             ) : (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
-                <TextView text={entry.responseBody ?? ""} search={query} />
+                <TextView text={entry.responseBody ?? ""} search={q} />
               </PayloadWithCopy>
             )}
           </DetailSection>
         </div>
       )}
+      </div>
     </div>
   );
 }

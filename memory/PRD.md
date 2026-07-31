@@ -111,3 +111,9 @@
 - Preview tab now renders a Chrome DevTools-style collapsible JSON tree (`react18-json-view`, new `JsonTree` component), themed via index.css overrides for light + dark.
 - Response tab now shows pretty-printed syntax-highlighted JSON source (falls back to plain text for non-JSON).
 - Verified via seeded IndexedDB bug with truncated JSON body, light + dark mode screenshots (Preview tree expand/collapse + Response highlighting).
+
+## 2026-06 (fork): Find-in-response search in Network detail
+- Added DevTools-style search box inside each expanded network call (Preview/Response/Headers): match counter (n/N), prev/next buttons, Enter / Shift+Enter cycling, active match in orange (`mark.mark-active`), auto-scroll to match.
+- While searching, JSON Preview switches from tree to highlighted source view so every match is visible; clears back to tree.
+- data-testids: network-body-search-input / -count / -prev / -next.
+- Verified via screenshot automation (search "event_id" → 1/2 → 2/2 → Enter cycles; headers search works).
