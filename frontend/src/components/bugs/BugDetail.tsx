@@ -1,6 +1,6 @@
 // ABOUTME: A single bug — header with status/severity/assignee, the replay player + inspector rail
 // ABOUTME: (the PostHog-style core), then description, reporter notes, and the bug's history.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Bot, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
 import type { Bug, BugEvent, BugSeverity, BugStatus, Reporter } from "@/lib/types";
@@ -60,6 +60,20 @@ export function BugDetail({
   };
   const clock = useReplayClock(bug.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
+
+  // Resizable inspector — drag the divider to control the rail's width (persisted).
+  const splitRef = useRef<HTMLDivElement | null>(null);
+  const dragging = useRef(false);
+  const [railW, setRailW] = useState<number | null>(() => {
+    const v = Number(localStorage.getItem("bf.rail-w"));
+    return v >= 300 && v <= 1000 ? v : null;
+  });
+
+  const clampRailW = (clientX: number) => {
+    const rect = splitRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return Math.round(Math.min(Math.max(rect.right - clientX, 300), Math.max(300, rect.width - 420)));
+  };
   const highlightRect = selectedPick != null ? (bug.pickedElements[selectedPick]?.rect ?? null) : null;
 
   // Shareable playhead: ?t=12.5 seeks on load; pausing/seeking keeps the URL in sync (replace,
@@ -276,8 +290,12 @@ export function BugDetail({
           </div>
         </header>
 
-        {/* Replay + inspector — the core */}
-        <div className="soft-fade grid h-auto grid-cols-1 gap-4 lg:h-[max(480px,calc(100vh-300px))] lg:grid-cols-[minmax(0,1fr)_clamp(340px,30%,560px)]">
+        {/* Replay + inspector — the core. The divider drags to resize the inspector. */}
+        <div
+          ref={splitRef}
+          style={{ "--rail-w": railW != null ? `${railW}px` : undefined } as CSSProperties}
+          className="soft-fade grid h-auto grid-cols-1 gap-4 lg:h-[max(480px,calc(100vh-300px))] lg:grid-cols-[minmax(0,1fr)_6px_var(--rail-w,clamp(340px,30%,560px))] lg:gap-x-1.5"
+        >
           <div className="relative h-[min(64vh,580px)] lg:h-auto lg:min-h-0">
             <ReplayPlayer bug={bug} clock={clock} highlightRect={highlightRect} />
             {selectedPick != null && (
@@ -290,6 +308,36 @@ export function BugDetail({
                 ✕ Clear highlight
               </button>
             )}
+          </div>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize inspector panel"
+            title="Drag to resize — double-click to reset"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              dragging.current = true;
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (!dragging.current) return;
+              const w = clampRailW(e.clientX);
+              if (w != null) setRailW(w);
+            }}
+            onPointerUp={(e) => {
+              dragging.current = false;
+              e.currentTarget.releasePointerCapture(e.pointerId);
+              const w = clampRailW(e.clientX);
+              if (w != null) localStorage.setItem("bf.rail-w", String(w));
+            }}
+            onDoubleClick={() => {
+              setRailW(null);
+              localStorage.removeItem("bf.rail-w");
+            }}
+            className="group hidden cursor-col-resize touch-none items-center justify-center lg:flex"
+            data-testid="inspector-resize-handle"
+          >
+            <span className="h-16 w-1 rounded-full bg-border transition-colors group-hover:bg-primary/60 group-active:bg-primary" />
           </div>
           <div className="h-[440px] lg:h-auto lg:min-h-0">
             <InspectorRail bug={bug} clock={clock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />

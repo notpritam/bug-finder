@@ -121,3 +121,7 @@
 ## 2026-06 (fork): Inspector fullscreen expand
 - Added Maximize2/Minimize2 fullscreen toggle to InspectorRail tab bar (same pattern as ReplayPlayer), using native Fullscreen API on the rail container; syncs state on fullscreenchange (Esc-safe). data-testid: inspector-fullscreen-btn.
 - Verified: enter/exit fullscreen + network detail interaction inside fullscreen via screenshot automation.
+
+## 2026-06 (fork): Resizable inspector panel
+- BugDetail split (player | inspector) now has a draggable vertical divider (role=separator, data-testid inspector-resize-handle): drag to set inspector width (clamped 300px..container-420px), persisted in localStorage `bf.rail-w` via CSS var --rail-w; double-click resets to default clamp(340px,30%,560px). Desktop (lg) only; mobile stacking unchanged.
+- Verified via automation: drag 489→802px, persistence, double-click reset.
