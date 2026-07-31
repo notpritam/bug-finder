@@ -1,21 +1,27 @@
 # ABOUTME: FastAPI backend for the bug-recording dashboard.
-# ABOUTME: Exposes /api/ai/draft-fill — Claude Sonnet 4.5 parses a captured session
-# ABOUTME: into a suggested title / description / severity / tags / assignee.
+# ABOUTME: - POST /api/ai/draft-fill      → Claude Sonnet 4.5 auto-fills a captured draft.
+# ABOUTME: - PUT/GET /api/bugs/{humanId}  → dashboard publishes bug snapshots; agents read them.
+# ABOUTME: - GET /api/bugs/{humanId}/summary.md → markdown summary for agent MCP tools.
+# ABOUTME: - POST/GET /api/bugs/{humanId}/comments → agent posts, dashboard polls.
 import json
 import os
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from dotenv import load_dotenv
 from emergentintegrations.llm.chat import LlmChat, UserMessage
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 
 load_dotenv()
 
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+MONGO_URL = os.environ["MONGO_URL"]
+DB_NAME = os.environ["DB_NAME"]
 
 app = FastAPI(title="BugDash AI")
 
@@ -27,8 +33,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_mongo = AsyncIOMotorClient(MONGO_URL)
+db = _mongo[DB_NAME]
+bugs_col = db["bugs"]
+comments_col = db["bug_comments"]
 
-# ------------------- schemas -------------------
+
+# ------------------- schemas: AI draft-fill -------------------
 
 class TeamMember(BaseModel):
     id: str
@@ -65,23 +76,49 @@ class DraftFillRequest(BaseModel):
     allowedTags: list[str] = Field(default_factory=list)
     initiatives: list[str] = Field(default_factory=list)
     team: list[TeamMember] = Field(default_factory=list)
-    # If set, only fill this one field (used by per-field magic buttons).
     field: str | None = None
-    # Current draft values so single-field fills can consider what the user already wrote.
     current: dict[str, Any] = Field(default_factory=dict)
 
 
 class DraftFillResponse(BaseModel):
     title: str | None = None
     description: str | None = None
-    severity: str | None = None  # low | medium | high | critical
+    severity: str | None = None
     tags: list[str] = Field(default_factory=list)
     assigneeId: str | None = None
     assigneeReason: str | None = None
     initiative: str | None = None
 
 
-# ------------------- prompt -------------------
+# ------------------- schemas: bugs / comments -------------------
+
+class BugPayload(BaseModel):
+    """The whole client-side bug row — we intentionally keep this permissive
+    (extra: allow) so schema drift on the client never breaks publishing."""
+    id: str
+    humanId: str
+    title: str
+
+    model_config = {"extra": "allow"}
+
+
+class AgentComment(BaseModel):
+    body: str = Field(min_length=1, max_length=8000)
+    actor: str = "Agent"
+    kind: str = "comment"  # comment | status_suggestion | fix_proposal
+
+
+class CommentOut(BaseModel):
+    id: str
+    bugHumanId: str
+    actor: str
+    kind: str
+    body: str
+    at: int
+    source: str  # "agent" | "dashboard"
+
+
+# ------------------- AI draft-fill (unchanged) -------------------
 
 SYSTEM_PROMPT = """You are an expert QA engineer that turns raw bug-recording evidence \
 into a clean, filed bug report. You will be given evidence from a browser session capture: \
@@ -121,27 +158,22 @@ SINGLE_FIELD_INSTRUCTION = {
 
 
 def build_evidence(req: DraftFillRequest) -> str:
-    """Pack the evidence into a compact structured block for the model."""
     parts: list[str] = []
     parts.append(f"PAGE_URL: {req.pageUrl}")
     parts.append(f"PAGE_TITLE: {req.pageTitle}")
     parts.append(f"REPORTER_NOTES:\n{req.notes.strip() or '(none)'}")
-
     if req.consoleErrors:
         errs = "\n".join(f"[{c.level}] {c.text}" for c in req.consoleErrors[:20])
         parts.append(f"CONSOLE_ERRORS:\n{errs}")
-
     if req.networkErrors:
         nets = "\n".join(f"{n.method} {n.url} → {n.status}" for n in req.networkErrors[:20])
         parts.append(f"FAILED_NETWORK_CALLS:\n{nets}")
-
     if req.pickedElements:
         picks = "\n".join(
             f"<{p.tag}> {p.selector or ''} — {(p.text or '').strip()[:80]}"
             for p in req.pickedElements[:10]
         )
         parts.append(f"PICKED_ELEMENTS:\n{picks}")
-
     parts.append(f"ALLOWED_TAGS: {json.dumps(req.allowedTags)}")
     parts.append(f"INITIATIVES: {json.dumps(req.initiatives)}")
     team_lines = [
@@ -149,7 +181,6 @@ def build_evidence(req: DraftFillRequest) -> str:
         for m in req.team
     ]
     parts.append("TEAM:\n" + ("\n".join(team_lines) if team_lines else "(none)"))
-
     if req.field:
         parts.append(
             f"ONLY_FILL_FIELD: {req.field}. "
@@ -157,17 +188,14 @@ def build_evidence(req: DraftFillRequest) -> str:
         )
         if req.current:
             parts.append(f"CURRENT_DRAFT_VALUES: {json.dumps(req.current)[:2000]}")
-
     return "\n\n".join(parts)
 
 
 def parse_json(text: str) -> dict[str, Any]:
-    """Claude sometimes wraps JSON in ```json fences — strip and parse."""
     t = text.strip()
     if t.startswith("```"):
         t = re.sub(r"^```(?:json)?", "", t).strip()
         t = re.sub(r"```$", "", t).strip()
-    # Fall back to the first {...} block if there's leading prose.
     if not t.startswith("{"):
         m = re.search(r"\{[\s\S]*\}", t)
         if m:
@@ -194,7 +222,7 @@ async def draft_fill(req: DraftFillRequest) -> DraftFillResponse:
 
     try:
         raw = await chat.send_message(UserMessage(text=evidence))
-    except Exception as e:  # LLM upstream failure — surface as 502
+    except Exception as e:
         raise HTTPException(status_code=502, detail=f"LLM upstream: {e}") from e
 
     try:
@@ -202,7 +230,6 @@ async def draft_fill(req: DraftFillRequest) -> DraftFillResponse:
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"LLM returned non-JSON: {raw[:200]}") from e
 
-    # Coerce tags to the allowed set (case-insensitive), keep order, dedupe.
     allowed_lc = {t.lower(): t for t in req.allowedTags}
     tags_out: list[str] = []
     seen: set[str] = set()
@@ -217,7 +244,6 @@ async def draft_fill(req: DraftFillRequest) -> DraftFillResponse:
     if severity not in {"low", "medium", "high", "critical", None}:
         severity = None
 
-    # Validate assignee id against team.
     team_ids = {m.id for m in req.team}
     assignee_id = data.get("assigneeId")
     if assignee_id not in team_ids:
@@ -225,7 +251,6 @@ async def draft_fill(req: DraftFillRequest) -> DraftFillResponse:
 
     initiative = data.get("initiative")
     if initiative and req.initiatives and initiative not in req.initiatives:
-        # Only accept from the whitelist if provided.
         initiative = None
 
     return DraftFillResponse(
@@ -237,3 +262,252 @@ async def draft_fill(req: DraftFillRequest) -> DraftFillResponse:
         assigneeReason=(data.get("assigneeReason") or None),
         initiative=initiative,
     )
+
+
+# ------------------- bugs (publish / fetch) -------------------
+
+def _now_ms() -> int:
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
+def _clean_bug_doc(doc: dict[str, Any]) -> dict[str, Any]:
+    doc.pop("_id", None)
+    return doc
+
+
+@app.put("/api/bugs/{human_id}")
+async def publish_bug(human_id: str, bug: BugPayload) -> dict[str, Any]:
+    """Dashboard upserts a bug snapshot so agents can read the whole thing.
+    Idempotent — the client republishes on every mutation."""
+    if bug.humanId != human_id:
+        raise HTTPException(400, "humanId in body does not match URL")
+    payload = bug.model_dump()
+    payload["_updatedAt"] = _now_ms()
+    await bugs_col.update_one({"humanId": human_id}, {"$set": payload}, upsert=True)
+    return {"ok": True, "humanId": human_id}
+
+
+@app.get("/api/bugs/{human_id}")
+async def get_bug(human_id: str) -> dict[str, Any]:
+    """Full JSON of a bug — replay events, console, network, elements, comments.
+    Used by the dashboard AND by agents that want the raw evidence."""
+    doc = await bugs_col.find_one({"humanId": human_id})
+    if not doc:
+        raise HTTPException(404, f"bug {human_id} not found")
+    _clean_bug_doc(doc)
+    comments = await _list_comments(human_id)
+    doc["agentComments"] = [c.model_dump() for c in comments]
+    return doc
+
+
+@app.delete("/api/bugs/{human_id}")
+async def delete_bug(human_id: str) -> dict[str, Any]:
+    await bugs_col.delete_one({"humanId": human_id})
+    await comments_col.delete_many({"bugHumanId": human_id})
+    return {"ok": True}
+
+
+# ------------------- agent MCP-ish surface -------------------
+
+def _fmt_offset(ms: int | float | None) -> str:
+    if ms is None:
+        return "?"
+    ms = int(ms)
+    s = ms // 1000
+    return f"{s // 60}:{s % 60:02d}"
+
+
+@app.get("/api/bugs/{human_id}/summary.md")
+async def bug_summary_md(human_id: str) -> dict[str, str]:
+    """A dense markdown briefing an agent can consume as one shot. This is the
+    "MCP-friendly" view — everything needed to reason about the bug in one blob."""
+    doc = await bugs_col.find_one({"humanId": human_id})
+    if not doc:
+        raise HTTPException(404, f"bug {human_id} not found")
+    _clean_bug_doc(doc)
+
+    lines: list[str] = []
+    lines.append(f"# {doc.get('humanId')} — {doc.get('title','(no title)')}")
+    lines.append("")
+    lines.append(
+        f"**Status:** {doc.get('status')} · **Severity:** {doc.get('severity')} · "
+        f"**Env:** {doc.get('env','?')} · **Tags:** {', '.join(doc.get('tags') or []) or '—'}"
+    )
+    reporter = doc.get("reporter") or {}
+    assignee = doc.get("assignee") or {}
+    lines.append(
+        f"**Reporter:** {reporter.get('name','?')} · **Assignee:** {assignee.get('name','unassigned')}"
+    )
+    lines.append(f"**Page:** {doc.get('pageUrl','')}")
+    if doc.get("initiative"):
+        lines.append(f"**Initiative:** {doc['initiative']}")
+    if doc.get("jobId"):
+        lines.append(f"**Job:** {doc['jobId']}")
+    lines.append("")
+    lines.append("## Description")
+    lines.append(str(doc.get("description") or "(none)"))
+    if doc.get("notes"):
+        lines.append("")
+        lines.append("## Reporter notes")
+        lines.append(str(doc["notes"]))
+    lines.append("")
+
+    env = doc.get("environment") or {}
+    if env:
+        vp = env.get("viewport") or {}
+        lines.append("## Environment")
+        lines.append(
+            f"- Browser: {env.get('browser','?')} on {env.get('os','?')}\n"
+            f"- Viewport: {vp.get('w','?')}×{vp.get('h','?')} @{env.get('dpr','?')}x\n"
+            f"- Language: {env.get('language','?')} · Timezone: {env.get('timezone','?')}\n"
+            f"- Online: {env.get('online','?')}"
+        )
+        lines.append("")
+
+    markers = doc.get("markers") or []
+    if markers:
+        lines.append("## Key moments (reporter flags)")
+        for m in markers:
+            lines.append(f"- `{_fmt_offset(m.get('t'))}` — {m.get('label') or '(no label)'} ({m.get('kind','user')})")
+        lines.append("")
+
+    console = doc.get("console") or []
+    errors = [c for c in console if c.get("level") == "error"]
+    if errors:
+        lines.append("## Console errors")
+        for c in errors[:25]:
+            text = str(c.get("text",""))[:400]
+            lines.append(f"- `{_fmt_offset(c.get('t'))}` {text}")
+        lines.append("")
+
+    net = doc.get("network") or []
+    failed = [n for n in net if isinstance(n.get("status"), int) and n["status"] >= 400]
+    if failed:
+        lines.append("## Failed network calls")
+        for n in failed[:25]:
+            lines.append(
+                f"- `{_fmt_offset(n.get('t'))}` {n.get('method','?')} {n.get('url','?')} → **{n.get('status')}** "
+                f"({n.get('durationMs','?')}ms)"
+            )
+        lines.append("")
+
+    picked = doc.get("pickedElements") or []
+    if picked:
+        lines.append("## Picked elements")
+        for p in picked[:15]:
+            lines.append(
+                f"- `<{p.get('tag','?')}>` `{p.get('selector','')}` — {(p.get('text') or '').strip()[:120]}"
+                + (f" · note: {p['note']}" if p.get("note") else "")
+            )
+        lines.append("")
+
+    replay = doc.get("replay") or []
+    clicks_navs = [e for e in replay if e.get("kind") in ("click", "nav", "input", "error")]
+    if clicks_navs:
+        lines.append("## Interaction trail")
+        for e in clicks_navs[:30]:
+            kind = e.get("kind")
+            t = _fmt_offset(e.get("t"))
+            if kind == "click":
+                lines.append(f"- `{t}` CLICK {e.get('target') or '(unknown target)'}")
+            elif kind == "nav":
+                lines.append(f"- `{t}` NAV {e.get('url','')}")
+            elif kind == "input":
+                lines.append(f"- `{t}` INPUT {e.get('field','')} = {str(e.get('value',''))[:80]}")
+            elif kind == "error":
+                lines.append(f"- `{t}` ERROR {e.get('message','')}")
+        lines.append("")
+
+    events = doc.get("events") or []
+    if events:
+        lines.append("## History")
+        for ev in sorted(events, key=lambda e: e.get("at", 0)):
+            when = datetime.fromtimestamp((ev.get("at") or 0) / 1000, tz=timezone.utc).isoformat()
+            lines.append(f"- {when} · **{ev.get('actor','?')}** {ev.get('detail','')}")
+        lines.append("")
+
+    comments = await _list_comments(human_id)
+    if comments:
+        lines.append("## Agent comments")
+        for c in comments:
+            when = datetime.fromtimestamp(c.at / 1000, tz=timezone.utc).isoformat()
+            lines.append(f"- {when} · **{c.actor}** ({c.kind}): {c.body}")
+        lines.append("")
+
+    return {"humanId": human_id, "markdown": "\n".join(lines)}
+
+
+# ------------------- comments (agent chat) -------------------
+
+async def _list_comments(human_id: str, since_ms: int = 0) -> list[CommentOut]:
+    cur = comments_col.find(
+        {"bugHumanId": human_id, "at": {"$gt": since_ms}}
+    ).sort("at", 1)
+    out: list[CommentOut] = []
+    async for doc in cur:
+        out.append(
+            CommentOut(
+                id=doc["id"],
+                bugHumanId=doc["bugHumanId"],
+                actor=doc.get("actor", "Agent"),
+                kind=doc.get("kind", "comment"),
+                body=doc.get("body", ""),
+                at=int(doc.get("at", 0)),
+                source=doc.get("source", "agent"),
+            )
+        )
+    return out
+
+
+@app.post("/api/bugs/{human_id}/comments", response_model=CommentOut)
+async def post_agent_comment(human_id: str, msg: AgentComment) -> CommentOut:
+    """The endpoint an external agent posts to. The dashboard polls
+    GET /comments and merges new ones into the bug's history."""
+    exists = await bugs_col.find_one({"humanId": human_id}, {"_id": 1})
+    if not exists:
+        raise HTTPException(404, f"bug {human_id} not found — publish it first")
+    now = _now_ms()
+    doc = {
+        "id": f"ac-{uuid.uuid4().hex[:12]}",
+        "bugHumanId": human_id,
+        "actor": msg.actor or "Agent",
+        "kind": msg.kind or "comment",
+        "body": msg.body.strip(),
+        "at": now,
+        "source": "agent",
+    }
+    await comments_col.insert_one(doc)
+    doc.pop("_id", None)
+    return CommentOut(**doc)
+
+
+@app.get("/api/bugs/{human_id}/comments", response_model=list[CommentOut])
+async def list_comments(
+    human_id: str, since: int = Query(0, description="Only return comments with at > since (epoch ms)")
+) -> list[CommentOut]:
+    return await _list_comments(human_id, since_ms=since)
+
+
+# ------------------- MCP directory -------------------
+
+@app.get("/api/mcp/bugs/{human_id}")
+async def mcp_bug(human_id: str) -> dict[str, Any]:
+    """A tiny "directory" describing what an MCP-style agent tool can do with
+    this bug id — self-describing so an agent knows the URLs to call."""
+    exists = await bugs_col.find_one({"humanId": human_id}, {"_id": 1, "title": 1})
+    if not exists:
+        raise HTTPException(404, f"bug {human_id} not found")
+    return {
+        "humanId": human_id,
+        "title": exists.get("title"),
+        "resources": {
+            "full_json": f"/api/bugs/{human_id}",
+            "markdown_summary": f"/api/bugs/{human_id}/summary.md",
+            "comments": f"/api/bugs/{human_id}/comments",
+            "post_comment": {
+                "method": "POST",
+                "url": f"/api/bugs/{human_id}/comments",
+                "body": {"body": "string", "actor": "string (optional)", "kind": "comment|status_suggestion|fix_proposal"},
+            },
+        },
+    }

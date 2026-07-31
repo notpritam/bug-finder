@@ -4,6 +4,7 @@ import type { Bug, BugSeverity, Draft, ReplayEvent, Reporter } from "./types";
 import { envFromUrl } from "./meta";
 import { idb } from "./store";
 import { broadcast } from "./sync";
+import { publishBug } from "./bugs-api";
 
 const DRAFTS_KEY = "bf.drafts";
 const SUBMITTED_KEY = "bf.submitted";
@@ -52,6 +53,8 @@ export async function loadSubmittedBugs(): Promise<Bug[]> {
 export function persistSubmittedBug(bug: Bug) {
   void idb.put("bugs", bug);
   broadcast({ kind: "bug-put", bug });
+  // Also publish to the backend so agents (MCP) can read the whole snapshot.
+  publishBug(bug);
 }
 
 /** The extension's DraftPayload → our Draft. Shapes already align; fill in dashboard-only fields. */

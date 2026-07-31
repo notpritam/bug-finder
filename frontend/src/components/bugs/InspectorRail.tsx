@@ -10,10 +10,13 @@ import {
   Info,
   MousePointerClick,
   Navigation,
+  Search,
   Terminal,
+  X,
 } from "lucide-react";
 import type { Bug, ConsoleEntry, NetEntry } from "@/lib/types";
 import { cn, formatBytes, formatDuration, formatOffset, pathOf, shortName } from "@/lib/utils";
+import { JsonView, TextView, tryParseJson } from "@/components/common/JsonView";
 import type { ReplayClock } from "@/components/replay/useReplayClock";
 
 type Tab = "activity" | "console" | "network" | "elements" | "info";
@@ -258,97 +261,389 @@ function ConsoleList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
   );
 }
 
-/* --- Network tab ---------------------------------------------------------- */
+/* --- Network tab (DevTools-style) ------------------------------------------ */
+
+type NetFilter = "all" | "xhr" | "errors";
+type NetTab = "headers" | "preview" | "response";
+
+function matchesQuery(n: NetEntry, q: string): boolean {
+  if (!q) return true;
+  const needle = q.toLowerCase();
+  if (n.method.toLowerCase().includes(needle)) return true;
+  if (String(n.status).includes(needle)) return true;
+  if (n.url.toLowerCase().includes(needle)) return true;
+  if ((n.responseBody ?? "").toLowerCase().includes(needle)) return true;
+  if ((n.requestBody ?? "").toLowerCase().includes(needle)) return true;
+  return false;
+}
 
 function NetworkList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const activeIdx = bug.network.reduce((acc, e, i) => (e.t <= clock.t ? i : acc), -1);
-  const setRef = useAutoScroll(activeIdx >= 0 ? bug.network[activeIdx].id : null);
+  const [detailTab, setDetailTab] = useState<NetTab>("preview");
+  const [filter, setFilter] = useState<NetFilter>("all");
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim();
+    return bug.network.filter((n) => {
+      if (filter === "xhr" && !(n.type === "xhr" || n.type === "fetch")) return false;
+      if (filter === "errors" && !(n.status >= 400 || n.status === 0)) return false;
+      return matchesQuery(n, q);
+    });
+  }, [bug.network, filter, query]);
+
+  const activeIdx = filtered.reduce((acc, e, i) => (e.t <= clock.t ? i : acc), -1);
+  const setRef = useAutoScroll(activeIdx >= 0 ? filtered[activeIdx].id : null);
+
+  const failedCount = bug.network.filter((n) => n.status >= 400 || n.status === 0).length;
+  const xhrCount = bug.network.filter((n) => n.type === "xhr" || n.type === "fetch").length;
 
   if (bug.network.length === 0) return <EmptyTab label="No network calls captured." />;
+
   return (
-    <div className="flex flex-col gap-px p-1.5">
-      {bug.network.map((n, i) => (
-        <div key={n.id} className="min-w-0">
-          <RailRow
-            t={n.t}
-            active={i === activeIdx}
-            passed={n.t <= clock.t}
-            onClick={() => {
-              clock.seek(n.t);
-              setOpenId(openId === n.id ? null : n.id);
-            }}
-            innerRef={setRef(n.id)}
-          >
-            <span className="flex items-center gap-1.5">
-              <span className="w-9 shrink-0 font-mono text-[10px] font-bold text-muted-foreground">{n.method}</span>
-              <span
-                className="shrink-0 rounded px-1 font-mono text-[10px] font-bold text-white"
-                style={{ background: statusColor(n.status) }}
-              >
-                {n.status}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/85">{shortName(n.url)}</span>
-              <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground">{n.durationMs}ms</span>
-              <ChevronDown
-                className={cn("size-3 shrink-0 text-muted-foreground transition-transform", openId === n.id && "rotate-180")}
-              />
-            </span>
-          </RailRow>
-          {openId === n.id && <NetworkDetail entry={n} />}
-        </div>
-      ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Toolbar: filters + search */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/60 px-2.5 py-1.5">
+        <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
+          All <span className="opacity-70">{bug.network.length}</span>
+        </FilterChip>
+        <FilterChip active={filter === "xhr"} onClick={() => setFilter("xhr")}>
+          XHR/Fetch <span className="opacity-70">{xhrCount}</span>
+        </FilterChip>
+        <FilterChip active={filter === "errors"} onClick={() => setFilter("errors")} danger>
+          Errors <span className="opacity-70">{failedCount}</span>
+        </FilterChip>
+        <label className="relative ml-auto flex min-w-[160px] flex-1 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 focus-within:border-primary/50">
+          <Search className="size-3 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter URL, body, status…"
+            aria-label="Filter network requests"
+            className="h-6 min-w-0 flex-1 border-none bg-transparent text-[11px] outline-none placeholder:text-muted-foreground/60"
+            data-testid="network-search-input"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear filter"
+              className="grid size-4 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          )}
+        </label>
+      </div>
+
+      {/* Column header — feels like DevTools */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 bg-muted/40 px-2 py-1 text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+        <span className="w-8 text-right">t</span>
+        <span className="w-10">Method</span>
+        <span className="w-10">Status</span>
+        <span className="min-w-0 flex-1">Path</span>
+        <span className="w-12 text-right">Type</span>
+        <span className="w-12 text-right">Size</span>
+        <span className="w-12 text-right">Time</span>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
+        {filtered.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[11.5px] text-muted-foreground">
+            No requests match your filter.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-px p-1">
+            {filtered.map((n, i) => (
+              <div key={n.id} className="min-w-0">
+                <button
+                  ref={setRef(n.id)}
+                  type="button"
+                  onClick={() => {
+                    clock.seek(n.t);
+                    setOpenId(openId === n.id ? null : n.id);
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left font-mono text-[10.5px] transition-colors",
+                    i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
+                    n.t <= clock.t ? "opacity-100" : "opacity-60",
+                  )}
+                  data-testid={`network-row-${n.id}`}
+                >
+                  <span className="w-8 shrink-0 text-right tabular-nums text-muted-foreground">
+                    {formatOffset(n.t)}
+                  </span>
+                  <span className="w-10 shrink-0 font-semibold text-foreground/80">{n.method}</span>
+                  <span
+                    className="w-10 shrink-0 rounded px-1 text-center text-[9.5px] font-bold text-white"
+                    style={{ background: statusColor(n.status) }}
+                  >
+                    {n.status || "—"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-foreground/85" title={n.url}>
+                    {highlightText(shortName(n.url), query)}
+                  </span>
+                  <span className="w-12 shrink-0 text-right text-[9.5px] uppercase text-muted-foreground">
+                    {n.type ?? "—"}
+                  </span>
+                  <span className="w-12 shrink-0 text-right text-muted-foreground">
+                    {formatBytes(n.sizeBytes)}
+                  </span>
+                  <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground">
+                    {n.durationMs}ms
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "size-3 shrink-0 text-muted-foreground transition-transform",
+                      openId === n.id && "rotate-180",
+                    )}
+                  />
+                </button>
+                {openId === n.id && (
+                  <NetworkDetail
+                    entry={n}
+                    query={query}
+                    tab={detailTab}
+                    onTabChange={setDetailTab}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function NetworkDetail({ entry }: { entry: NetEntry }) {
+function FilterChip({
+  active,
+  danger,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  danger?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
-    <div className="mx-2 mb-1.5 space-y-2 rounded-md border border-border/60 bg-muted/40 p-2.5">
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+        active
+          ? danger
+            ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+            : "bg-primary text-primary-foreground"
+          : "bg-muted text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function highlightText(text: string, query: string): ReactNode {
+  if (!query) return text;
+  const q = query.toLowerCase();
+  const lower = text.toLowerCase();
+  const parts: ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < text.length) {
+    const at = lower.indexOf(q, i);
+    if (at === -1) {
+      parts.push(text.slice(i));
+      break;
+    }
+    if (at > i) parts.push(text.slice(i, at));
+    parts.push(
+      <mark key={key++} className="rounded-sm bg-amber-200/70 px-px text-inherit dark:bg-amber-400/40">
+        {text.slice(at, at + query.length)}
+      </mark>,
+    );
+    i = at + query.length;
+  }
+  return <>{parts}</>;
+}
+
+function NetworkDetail({
+  entry,
+  query,
+  tab,
+  onTabChange,
+}: {
+  entry: NetEntry;
+  query: string;
+  tab: NetTab;
+  onTabChange: (t: NetTab) => void;
+}) {
+  const responseJson = useMemo(() => tryParseJson(entry.responseBody ?? null), [entry.responseBody]);
+  const requestJson = useMemo(() => tryParseJson(entry.requestBody ?? null), [entry.requestBody]);
+  const hasRequestBody = (entry.requestBody ?? "").trim().length > 0;
+  const hasResponseBody = (entry.responseBody ?? "").trim().length > 0;
+
+  return (
+    <div className="mx-2 mb-1.5 space-y-2 rounded-md border border-border/60 bg-muted/30 p-2.5">
+      {/* URL row */}
       <div className="flex items-start gap-1.5">
-        <p className="min-w-0 flex-1 break-all font-mono text-[10px] text-muted-foreground">{entry.url}</p>
+        <p className="min-w-0 flex-1 break-all font-mono text-[10px] text-muted-foreground">
+          {highlightText(entry.url, query)}
+        </p>
         <CopyButton text={entry.url} label="Copy URL" />
       </div>
+
+      {/* Facts strip */}
       <div className="grid grid-cols-3 gap-2 text-[10px]">
-        <Fact label="Status" value={`${entry.status} ${entry.statusText ?? ""}`} wrap />
+        <Fact label="Status" value={`${entry.status} ${entry.statusText ?? ""}`.trim()} wrap />
         <Fact label="Duration" value={`${entry.durationMs} ms`} />
         <Fact label="Size" value={formatBytes(entry.sizeBytes)} />
       </div>
-      {entry.requestHeaders && Object.keys(entry.requestHeaders).length > 0 && (
-        <DetailSection title="Request headers">
-          <HeaderList headers={entry.requestHeaders} />
-        </DetailSection>
+
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-0.5 border-b border-border/60">
+        {(["headers", "preview", "response"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onTabChange(t)}
+            className={cn(
+              "relative px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wide transition-colors",
+              tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+            data-testid={`network-detail-tab-${t}`}
+          >
+            {t}
+            {tab === t && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-primary" />}
+          </button>
+        ))}
+      </div>
+
+      {tab === "headers" && (
+        <div className="space-y-3">
+          <DetailSection title="Request headers">
+            {entry.requestHeaders && Object.keys(entry.requestHeaders).length > 0 ? (
+              <HeaderList headers={entry.requestHeaders} query={query} />
+            ) : (
+              <EmptyLine label="No request headers captured." />
+            )}
+          </DetailSection>
+          <DetailSection title="Response headers">
+            {entry.responseHeaders && Object.keys(entry.responseHeaders).length > 0 ? (
+              <HeaderList headers={entry.responseHeaders} query={query} />
+            ) : (
+              <EmptyLine label="No response headers captured." />
+            )}
+          </DetailSection>
+        </div>
       )}
-      {entry.requestBody && (
-        <DetailSection title="Request body">
-          <Payload text={entry.requestBody} />
-        </DetailSection>
+
+      {tab === "preview" && (
+        <div className="space-y-3">
+          <DetailSection
+            title={
+              <span className="flex items-center gap-1.5">
+                Request payload
+                {requestJson != null && (
+                  <span className="rounded bg-emerald-100 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    JSON
+                  </span>
+                )}
+              </span>
+            }
+          >
+            {!hasRequestBody ? (
+              <EmptyLine label="No request body." />
+            ) : requestJson != null ? (
+              <PayloadWithCopy raw={entry.requestBody ?? ""}>
+                <JsonView data={requestJson} search={query} />
+              </PayloadWithCopy>
+            ) : (
+              <PayloadWithCopy raw={entry.requestBody ?? ""}>
+                <TextView text={entry.requestBody ?? ""} search={query} />
+              </PayloadWithCopy>
+            )}
+          </DetailSection>
+          <DetailSection
+            title={
+              <span className="flex items-center gap-1.5">
+                Response preview
+                {responseJson != null && (
+                  <span className="rounded bg-emerald-100 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    JSON
+                  </span>
+                )}
+              </span>
+            }
+          >
+            {!hasResponseBody ? (
+              <EmptyLine label="No response body." />
+            ) : responseJson != null ? (
+              <PayloadWithCopy raw={entry.responseBody ?? ""}>
+                <JsonView data={responseJson} search={query} />
+              </PayloadWithCopy>
+            ) : (
+              <PayloadWithCopy raw={entry.responseBody ?? ""}>
+                <TextView text={entry.responseBody ?? ""} search={query} />
+              </PayloadWithCopy>
+            )}
+          </DetailSection>
+        </div>
       )}
-      {entry.responseHeaders && Object.keys(entry.responseHeaders).length > 0 && (
-        <DetailSection title="Response headers">
-          <HeaderList headers={entry.responseHeaders} />
-        </DetailSection>
-      )}
-      {entry.responseBody && (
-        <DetailSection title="Response body">
-          <Payload text={entry.responseBody} />
-        </DetailSection>
+
+      {tab === "response" && (
+        <div className="space-y-3">
+          <DetailSection title="Raw response body">
+            {!hasResponseBody ? (
+              <EmptyLine label="No response body." />
+            ) : (
+              <PayloadWithCopy raw={entry.responseBody ?? ""}>
+                <TextView text={entry.responseBody ?? ""} search={query} />
+              </PayloadWithCopy>
+            )}
+          </DetailSection>
+        </div>
       )}
     </div>
   );
 }
 
-function HeaderList({ headers }: { headers: Record<string, string> }) {
+function HeaderList({ headers, query }: { headers: Record<string, string>; query: string }) {
+  const filtered = Object.entries(headers).filter(
+    ([k, v]) => !query || k.toLowerCase().includes(query.toLowerCase()) || v.toLowerCase().includes(query.toLowerCase()),
+  );
+  if (filtered.length === 0) return <EmptyLine label="No matching headers." />;
   return (
     <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-2 gap-y-0.5">
-      {Object.entries(headers).map(([k, v]) => (
+      {filtered.map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="truncate font-mono text-[10px] text-muted-foreground">{k}</dt>
-          <dd className="min-w-0 break-all font-mono text-[10px] text-foreground/80">{v}</dd>
+          <dt className="truncate font-mono text-[10px] font-semibold text-[color:var(--json-key)]">
+            {highlightText(k, query)}
+          </dt>
+          <dd className="min-w-0 break-all font-mono text-[10px] text-foreground/80">
+            {highlightText(v, query)}
+          </dd>
         </div>
       ))}
     </dl>
   );
+}
+
+function PayloadWithCopy({ raw, children }: { raw: string; children: ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      <span className="absolute right-1.5 top-1.5">
+        <CopyButton text={raw} label="Copy body" />
+      </span>
+    </div>
+  );
+}
+
+function EmptyLine({ label }: { label: string }) {
+  return <p className="rounded bg-muted/40 px-2 py-1.5 text-[10.5px] italic text-muted-foreground">{label}</p>;
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -468,7 +763,7 @@ function EmptyTab({ label }: { label: string }) {
   return <p className="px-4 py-10 text-center text-[12px] text-muted-foreground">{label}</p>;
 }
 
-function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+function DetailSection({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
       <p className="text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">{title}</p>
@@ -496,17 +791,14 @@ function Fact({ label, value, mono, wrap }: { label: string; value: string; mono
 }
 
 function Payload({ text }: { text: string }) {
+  // Legacy — kept as a fallback if callers outside this file exist. Prefer JsonView / TextView.
   return (
-    <div className="relative">
-      <pre className="max-h-48 overflow-auto scroll-thin whitespace-pre-wrap break-words rounded bg-card p-2 pr-14 font-mono text-[10px] leading-relaxed text-foreground/85">
-        {text}
-      </pre>
-      <span className="absolute right-1.5 top-1.5">
-        <CopyButton text={text} label="Copy body" />
-      </span>
-    </div>
+    <pre className="max-h-48 overflow-auto scroll-thin whitespace-pre-wrap break-words rounded bg-card p-2 font-mono text-[10px] leading-relaxed text-foreground/85">
+      {text}
+    </pre>
   );
 }
+void Payload;
 
 /* --- the rail ---------------------------------------------------------- */
 

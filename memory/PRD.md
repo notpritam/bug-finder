@@ -1,81 +1,106 @@
 # Bug Finder — Dashboard PRD
 
-## Original problem statement (verbatim)
-> lets serve the dashboard through our ui folder and then we will need to add few
-> ai elements in it in draft page etc to help create and auto fill the message and
-> details like tag team through the issue or notes, by parsing that, so user
-> doesn't need to write everything etc
+## Original problem statement (verbatim, growing over sessions)
+1. > lets serve the dashboard through our ui folder and then we will need to add
+>   few ai elements in it in draft page etc to help create and auto fill the
+>   message and details like tag team through the issue or notes, by parsing
+>   that, so user doesn't need to write everything etc
+2. > also improve the ui of our network panel response etc as well add proper
+>   good developer like formatting, preview json parsing etc highlighting search
+>   etc make it best and easy to debug, also lets have a mcp or route for the
+>   bug as well, or id which we can share through mcp to an agent and agent will
+>   be able to get all the interaction messages all the data dn all for bug to
+>   fix or etc, also expose a endpoint as well for agent to post messages as
+>   well in our chat etc
+3. > also once done give me a file or message to send to an agent to make the
+>   changes in extension so extension now points to this url now
 
 ## Architecture
 
-- **Frontend** — `/app/frontend`: Vite + React 19 + TypeScript + Tailwind 4 (moved
-  from `/app` root to conform to the pod's supervisor layout). Vite serves on
-  port 3000 via `yarn start` (`vite --host 0.0.0.0 --port 3000`), config allows
-  all hosts + wss HMR through the preview ingress. `envPrefix` extended with
-  `REACT_APP_` so `import.meta.env.REACT_APP_BACKEND_URL` resolves in code.
+- **Frontend** — `/app/frontend`: Vite + React 19 + TypeScript + Tailwind 4.
+  Served by supervisor via `yarn start` on port 3000 (`vite --host 0.0.0.0
+  --port 3000`). `vite.config.ts` allows all hosts + wss HMR + `REACT_APP_*`
+  env prefix, so `import.meta.env.REACT_APP_BACKEND_URL` works.
 - **Backend** — `/app/backend`: FastAPI (uvicorn on 8001, supervisor-managed).
-  One endpoint today: `POST /api/ai/draft-fill`. Uses
-  `emergentintegrations.llm.chat.LlmChat` with `anthropic / claude-sonnet-4-5-20250929`
-  and the `EMERGENT_LLM_KEY` universal key.
-- **Persistence** — Drafts and filed bugs still live in IndexedDB in the
-  browser (no backend DB writes yet). MongoDB is available but unused.
+  Uses `emergentintegrations.llm.chat.LlmChat` +
+  `anthropic/claude-sonnet-4-5-20250929` via the `EMERGENT_LLM_KEY` universal key.
+  MongoDB via `motor` for bug snapshots + agent comments (`MONGO_URL`, `DB_NAME`).
+- **Persistence** —
+  - Drafts stay in the browser (IndexedDB) — personal until submitted.
+  - Filed bugs live in **both** IndexedDB (for offline UX) **and** Mongo
+    (`bugs` collection) via auto-publish. Agent comments live in Mongo
+    (`bug_comments` collection).
+- **Extension bridge** — the browser extension delivers drafts through
+  `window.postMessage({ source: "bugfinder-extension", type: "draft", draft })`.
+  Dashboard content in `App.tsx` listens, persists, opens the draft review.
+  See `/app/EXTENSION_HANDOFF.md` for the full handoff spec.
 
-## Users
-- **Reporter (guest or signed-in)** — records a session with the browser
-  extension (owned by the user, out of scope for the dashboard), reviews it here,
-  fills the report, submits.
-- **Assignee (developer)** — receives the filed bug with a matched owner.
+## Backend endpoints (session 2)
 
-## Core functionality
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET  | `/api/health`                          | liveness |
+| POST | `/api/ai/draft-fill`                   | Claude Sonnet 4.5 auto-fills the draft |
+| PUT  | `/api/bugs/{humanId}`                  | dashboard upserts a bug snapshot |
+| GET  | `/api/bugs/{humanId}`                  | full JSON incl. `agentComments` |
+| DEL  | `/api/bugs/{humanId}`                  | drop snapshot + comments |
+| GET  | `/api/bugs/{humanId}/summary.md`       | dense markdown briefing for LLM tools |
+| POST | `/api/bugs/{humanId}/comments`         | agent posts a comment / fix proposal |
+| GET  | `/api/bugs/{humanId}/comments?since=`  | dashboard polls for new agent comments |
+| GET  | `/api/mcp/bugs/{humanId}`              | self-describing MCP directory |
 
-### Existing (kept working)
-- Sign in / sign up / anonymous session (local-only accounts).
-- Sidebar navigation (Drafts / All / Open / In progress / Resolved / Mine).
-- Draft review: replay player, trim handles, flags, inspector rail
-  (activity/console/network/elements/info).
-- Draft form (title, severity, environment, tags, initiative, job id,
-  credentials, description, notes).
-- Bug list + bug detail (status, severity, assignee, comments, history).
-- Extension bridge (`window.postMessage`) — a draft delivered from the extension
-  auto-opens for review.
+## What's implemented
 
-### New — AI Auto-fill (this session)
-- **"AI fill report"** violet-gradient button in the review toolbar. One click
-  parses `notes + console errors + failed network calls + picked elements +
-  pageUrl` and fills: title, description (Expected/Actual/Steps),
-  severity, tags (whitelisted), assignee (from team roster with role/team match),
-  and initiative (whitelisted).
-- **Per-field sparkle "AI" buttons** next to Title, Severity, Tags, Assignee,
-  Initiative, Description — regenerate just one field.
-- **Assignee selector** added to the draft form with the AI's reason chip
-  ("MC · 500 on order endpoint → payments engineer").
-- Backend coerces LLM output: tags dedup + whitelist match, severity enum
-  validation, assignee id must exist in team, initiative must be whitelisted.
-- Errors surface inline (red banner) — never silent.
+### Session 1 (2026-01-31)
+- Moved Vite app to `/app/frontend`, wired supervisor.
+- Backend + Claude Sonnet 4.5 auto-fill endpoint (`/api/ai/draft-fill`).
+- "✨ AI fill report" button + per-field sparkle buttons on the Draft page.
+- Assignee selector added, with AI reason chip.
+- `bugFromDraft(...)` resolves the AI's `assigneeId` → `Reporter`.
 
-## What's implemented (2026-01-31)
-- Moved Vite app from `/app` → `/app/frontend`, wired `yarn start` for
-  supervisor.
-- Created `/app/backend/server.py` with `/api/health` + `/api/ai/draft-fill`.
-- New: `frontend/src/lib/ai.ts`, `MagicButton`, assignee picker in `DraftReview`.
-- Draft type gained `assigneeId?: string | null`; `bugFromDraft` resolves it
-  against `people` so the filed bug lands pre-assigned.
-- CORS wide-open on the backend (single-tenant preview app).
+### Session 2 (2026-01-31, later same day)
+- **Network panel redesign** (`InspectorRail.tsx`):
+  - Column header (t · METHOD · STATUS · PATH · TYPE · SIZE · TIME).
+  - `All / XHR-Fetch / Errors` filter chips with counts.
+  - Search box that filters requests by URL / body / status **and** highlights
+    matches inside the URL, headers, and JSON viewer.
+  - Expandable detail with three sub-tabs — `HEADERS · PREVIEW · RESPONSE`.
+  - New `JsonView` component (`components/common/JsonView.tsx`): pretty-prints
+    parsed JSON with syntax highlighting (keys / strings / numbers / booleans
+    / null / punctuation) via CSS variables that adapt to light + dark themes.
+  - "JSON" pill badge appears when the body parses; `TextView` is the plain
+    fallback with the same search highlighting.
+- **MCP / agent surface**:
+  - `PUT /api/bugs/{humanId}` — dashboard auto-publishes on every
+    `persistSubmittedBug` (via `lib/bugs-api.ts` → `publishBug`).
+  - `GET /api/bugs/{humanId}` + `/summary.md` — everything an agent needs.
+  - `POST /api/bugs/{humanId}/comments` — an agent posts a chat message.
+    `BugDetail` polls every 5s and merges results into the history feed with
+    a distinct "agent" avatar + badge.
+  - **"Share with agent"** violet button on the bug detail header copies the
+    MCP directory URL so it can be pasted into an agent tool.
+- **Extension handoff** — `/app/EXTENSION_HANDOFF.md` — a self-contained brief
+  the extension agent can consume without any of this repo's context.
 
-## Prioritized backlog
-- **P1** — Persist bugs/drafts server-side (Mongo) so they survive across
-  devices, not just IndexedDB.
+## What still lives client-side
+- Draft persistence — IndexedDB (personal until submit).
+- Local auth (SHA-256 in `localStorage`).
+- Cross-tab sync via `BroadcastChannel` (unchanged).
+
+## Backlog (prioritized)
 - **P1** — Stream the AI response (SSE) so long descriptions arrive token by
   token instead of a lump.
-- **P2** — Duplicate detection: on AI fill, also return top‑3 similar bugs
-  from the existing list.
-- **P2** — Let a team manager promote a bug to a Jira/Linear ticket via the
-  filed bug page.
-- **P2** — Adjustable tone / language for descriptions (concise vs. verbose).
-- **P3** — Track AI fill usage (per-user counter) to nudge the workflow.
+- **P1** — Server-side persistence for drafts (currently only filed bugs are
+  in Mongo). Would unblock multi-device.
+- **P1** — Real auth on `/api/bugs/*` (currently open in the preview pod).
+- **P2** — Duplicate detection on AI fill (top-3 similar filed bugs).
+- **P2** — Push (SSE/WebSocket) for agent comments instead of 5s polling.
+- **P2** — First-class MCP server (JSON-RPC over stdio) that fronts the REST
+  surface — turn `/api/mcp/bugs/{humanId}` into a real tool an MCP-aware
+  agent can auto-discover.
+- **P3** — Track AI fill usage per-user (see enhancement idea below).
 
 ## Next action items
-- Ask the user whether they want AI streaming (nice-to-have) and server-side
-  persistence (needed for multi-device).
-- Once the extension side lands their end, verify a real extension-delivered
-  draft round-trips through AI fill → submit.
+- Ship `EXTENSION_HANDOFF.md` to the extension agent.
+- Confirm with the user whether they want SSE streaming next, or full auth
+  on the agent endpoints first.

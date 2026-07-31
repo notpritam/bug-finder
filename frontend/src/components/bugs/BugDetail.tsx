@@ -1,10 +1,11 @@
 // ABOUTME: A single bug — header with status/severity/assignee, the replay player + inspector rail
 // ABOUTME: (the PostHog-style core), then description, reporter notes, and the bug's history.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
-import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
+import { ArrowLeft, Bot, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
+import type { Bug, BugEvent, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import { ENV_META, type Env } from "@/lib/meta";
+import { agentShareUrl, fetchAgentComments, type AgentComment } from "@/lib/bugs-api";
 import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
 import {
   BUG_SEVERITY_ORDER,
@@ -42,11 +43,19 @@ export function BugDetail({
 }) {
   const navigate = useNavigate();
   const [linkCopied, setLinkCopied] = useState(false);
+  const [agentCopied, setAgentCopied] = useState(false);
+  const [agentComments, setAgentComments] = useState<AgentComment[]>([]);
   const copyLink = () => {
     const url = `${location.origin}/bug/${bug.humanId}${clock.t > 0 ? `?t=${(clock.t / 1000).toFixed(1)}` : ""}`;
     void navigator.clipboard?.writeText(url).then(() => {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 1500);
+    });
+  };
+  const copyAgentUrl = () => {
+    void navigator.clipboard?.writeText(agentShareUrl(bug.humanId)).then(() => {
+      setAgentCopied(true);
+      setTimeout(() => setAgentCopied(false), 1500);
     });
   };
   const clock = useReplayClock(bug.durationMs);
@@ -100,6 +109,49 @@ export function BugDetail({
     return () => window.removeEventListener("keydown", onKey);
   }, [clock, onBack, selectedPick]);
 
+  // Poll the backend for agent-posted comments and merge them into the history feed.
+  // Best-effort — if the backend is down, the UI just keeps the local history.
+  useEffect(() => {
+    let alive = true;
+    let sinceMs = 0;
+    const tick = async () => {
+      const fresh = await fetchAgentComments(bug.humanId, sinceMs);
+      if (!alive || fresh.length === 0) return;
+      sinceMs = Math.max(sinceMs, ...fresh.map((c) => c.at));
+      setAgentComments((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        const merged = [...prev];
+        for (const c of fresh) if (!seen.has(c.id)) merged.push(c);
+        return merged;
+      });
+    };
+    void tick();
+    const iv = setInterval(() => void tick(), 5000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [bug.humanId]);
+
+  // Reset agent comments when navigating to a different bug.
+  useEffect(() => {
+    setAgentComments([]);
+  }, [bug.humanId]);
+
+  /** Merged history: local events + agent comments, sorted newest first. */
+  const historyFeed = useMemo<BugEvent[]>(() => {
+    const asEvents: BugEvent[] = agentComments.map((c) => ({
+      id: c.id,
+      actor: c.actor,
+      kind: "comment",
+      detail: c.body,
+      at: c.at,
+    }));
+    const seen = new Set(bug.events.map((e) => e.id));
+    const merged = [...bug.events, ...asEvents.filter((e) => !seen.has(e.id))];
+    return merged.sort((a, b) => b.at - a.at);
+  }, [bug.events, agentComments]);
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
       <div className="w-full space-y-4 px-6 py-5">
@@ -140,6 +192,15 @@ export function BugDetail({
               </button>
             ))}
             <span className="ml-auto flex items-center gap-3 text-[11.5px] text-muted-foreground">
+              <button
+                type="button"
+                onClick={copyAgentUrl}
+                className="inline-flex items-center gap-1 rounded-md border border-violet-300/60 bg-violet-50 px-2 py-0.5 font-semibold text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
+                title="Copy the MCP url an agent can use to fetch this bug and post comments back"
+                data-testid="bug-share-agent-btn"
+              >
+                <Bot className="size-3.5" /> {agentCopied ? "Copied!" : "Share with agent"}
+              </button>
               <button
                 type="button"
                 onClick={copyLink}
@@ -309,20 +370,37 @@ export function BugDetail({
           <Card title="History & comments">
             <CommentComposer me={me} onSubmit={(body) => onComment(bug.id, body)} />
             <ol className="mt-3 space-y-3">
-              {[...bug.events].sort((a, b) => b.at - a.at).map((ev) => (
-                <li key={ev.id} className="flex gap-2.5">
-                  <UserAvatar name={ev.actor} seed={ev.actor} size={22} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] leading-snug">
-                      <span className="font-semibold">{ev.actor}</span>{" "}
-                      <span className={cn(ev.kind === "comment" ? "text-foreground/90" : "text-foreground/70")}>
-                        {ev.detail}
+              {historyFeed.map((ev) => {
+                const isAgent = agentComments.some((c) => c.id === ev.id);
+                return (
+                  <li key={ev.id} className="flex gap-2.5">
+                    {isAgent ? (
+                      <span
+                        className="grid size-[22px] shrink-0 place-items-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300"
+                        title={`${ev.actor} · agent`}
+                      >
+                        <Bot className="size-3.5" />
                       </span>
-                    </p>
-                    <p className="mt-0.5 text-[10.5px] text-muted-foreground">{relativeTime(ev.at)}</p>
-                  </div>
-                </li>
-              ))}
+                    ) : (
+                      <UserAvatar name={ev.actor} seed={ev.actor} size={22} />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] leading-snug">
+                        <span className="font-semibold">{ev.actor}</span>
+                        {isAgent && (
+                          <span className="ml-1.5 inline-block rounded-sm bg-violet-100 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                            agent
+                          </span>
+                        )}{" "}
+                        <span className={cn(ev.kind === "comment" ? "text-foreground/90" : "text-foreground/70")}>
+                          {ev.detail}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-[10.5px] text-muted-foreground">{relativeTime(ev.at)}</p>
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           </Card>
           </div>
