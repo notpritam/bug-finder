@@ -23,6 +23,7 @@ import {
   removeDraft,
 } from "@/lib/drafts";
 import { uploadJson } from "@/lib/storage-api";
+import { onSync } from "@/lib/sync";
 import { Sidebar, type SidebarView } from "@/components/shell/Sidebar";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { BugsPage } from "@/components/bugs/BugsPage";
@@ -74,12 +75,35 @@ function Shell({
     return [...map.values()];
   }, [user]);
 
-  // Hydrate persisted state (IndexedDB) once on mount.
+  // Hydrate persisted state (IndexedDB) once on mount. Merge rather than replace — a draft
+  // can arrive from the extension bridge before this resolves, and must not be dropped.
   useEffect(() => {
     void Promise.all([loadSubmittedBugs(), loadDrafts()]).then(([submitted, storedDrafts]) => {
-      setBugs(submitted);
-      setDrafts(storedDrafts);
+      setBugs((prev) => [...prev, ...submitted.filter((b) => !prev.some((p) => p.id === b.id))]);
+      setDrafts((prev) => [...prev, ...storedDrafts.filter((d) => !prev.some((p) => p.id === d.id))]);
       setHydrated(true);
+    });
+  }, []);
+
+  // Mutations made in another dashboard tab (new draft delivered there, bug filed, draft
+  // discarded) arrive over a BroadcastChannel so this tab never needs a manual refresh.
+  useEffect(() => {
+    return onSync((msg) => {
+      if (msg.kind === "draft-put") {
+        setDrafts((prev) =>
+          prev.some((d) => d.id === msg.draft.id)
+            ? prev.map((d) => (d.id === msg.draft.id ? msg.draft : d))
+            : [msg.draft, ...prev],
+        );
+      } else if (msg.kind === "draft-remove") {
+        setDrafts((prev) => prev.filter((d) => d.id !== msg.id));
+      } else if (msg.kind === "bug-put") {
+        setBugs((prev) =>
+          prev.some((b) => b.id === msg.bug.id)
+            ? prev.map((b) => (b.id === msg.bug.id ? msg.bug : b))
+            : [msg.bug, ...prev],
+        );
+      }
     });
   }, []);
 

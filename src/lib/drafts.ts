@@ -3,6 +3,7 @@
 import type { Bug, BugSeverity, Draft, ReplayEvent, Reporter } from "./types";
 import { envFromUrl } from "./meta";
 import { idb } from "./store";
+import { broadcast } from "./sync";
 
 const DRAFTS_KEY = "bf.drafts";
 const SUBMITTED_KEY = "bf.submitted";
@@ -25,10 +26,12 @@ export async function loadDrafts(): Promise<Draft[]> {
 
 export function persistDraft(draft: Draft) {
   void idb.put("drafts", draft);
+  broadcast({ kind: "draft-put", draft });
 }
 
 export function removeDraft(id: string) {
   void idb.delete("drafts", id);
+  broadcast({ kind: "draft-remove", id });
 }
 
 export async function loadSubmittedBugs(): Promise<Bug[]> {
@@ -48,6 +51,7 @@ export async function loadSubmittedBugs(): Promise<Bug[]> {
 
 export function persistSubmittedBug(bug: Bug) {
   void idb.put("bugs", bug);
+  broadcast({ kind: "bug-put", bug });
 }
 
 /** The extension's DraftPayload → our Draft. Shapes already align; fill in dashboard-only fields. */
