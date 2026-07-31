@@ -2,9 +2,12 @@
 // ABOUTME: term that highlights matches. Falls back to plain <pre> if the input isn't JSON.
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { jsonrepair } from "jsonrepair";
+import ReactJsonView from "react18-json-view";
+import "react18-json-view/src/style.css";
 import { cn } from "@/lib/utils";
 
-/** Try to parse `text` as JSON; return null when it isn't. */
+/** Try to parse `text` as JSON; repairs truncated/malformed bodies; return null when it isn't JSON. */
 export function tryParseJson(text: string | null | undefined): unknown | null {
   if (!text) return null;
   const trimmed = text.trim();
@@ -13,8 +16,35 @@ export function tryParseJson(text: string | null | undefined): unknown | null {
   try {
     return JSON.parse(trimmed);
   } catch {
-    return null;
+    // Bodies captured by the extension are often truncated mid-JSON — repair, then parse.
+    try {
+      return JSON.parse(jsonrepair(trimmed));
+    } catch {
+      return null;
+    }
   }
+}
+
+/** Chrome DevTools-style collapsible JSON tree (the "Preview" tab experience). */
+export function JsonTree({ data, className }: { data: unknown; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "max-h-72 overflow-auto scroll-thin rounded p-2 font-mono text-[11px] leading-relaxed",
+        className,
+      )}
+      style={{ background: "var(--json-bg)" }}
+      data-testid="json-tree"
+    >
+      <ReactJsonView
+        src={data as object}
+        collapsed={2}
+        collapseStringsAfterLength={140}
+        displaySize="collapsed"
+        enableClipboard={false}
+      />
+    </div>
+  );
 }
 
 interface Token {

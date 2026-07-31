@@ -13,10 +13,12 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "clsx": "^2.1.1",
+    "jsonrepair": "^3.15.0",
     "lucide-react": "^1.27.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
+    "react18-json-view": "^0.2.10",
     "rrweb": "^2.1.1",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3"

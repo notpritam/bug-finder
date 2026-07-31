@@ -336,3 +336,26 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* react18-json-view — restyled to match our theme (Chrome DevTools-like tree). */
+.json-view {
+  color: var(--json-punct);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  --json-property: var(--json-key);
+  --json-index: var(--json-key);
+  --json-number: #1f6feb;
+  --json-string: #0b7d4d;
+  --json-boolean: #b45309;
+  --json-null: #7c3aed;
+}
+.dark .json-view {
+  --json-number: #f2cc60;
+  --json-string: #a5d6ff;
+  --json-boolean: #ff7b72;
+  --json-null: #d2a8ff;
+}
+.json-view .jv-chevron {
+  opacity: 0.55;
+}

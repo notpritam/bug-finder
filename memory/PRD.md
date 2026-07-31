@@ -104,3 +104,10 @@
 - Ship `EXTENSION_HANDOFF.md` to the extension agent.
 - Confirm with the user whether they want SSE streaming next, or full auth
   on the agent endpoints first.
+
+## 2026-06 (fork): Chrome DevTools-grade JSON viewing in Network panel
+- Root cause of "not highlighted/formatted" JSON: extension-captured response bodies are often TRUNCATED mid-JSON, so JSON.parse failed and the UI fell back to a plain-text blob.
+- Fix: added `jsonrepair` fallback in `tryParseJson` (JsonView.tsx) — truncated bodies are repaired then parsed.
+- Preview tab now renders a Chrome DevTools-style collapsible JSON tree (`react18-json-view`, new `JsonTree` component), themed via index.css overrides for light + dark.
+- Response tab now shows pretty-printed syntax-highlighted JSON source (falls back to plain text for non-JSON).
+- Verified via seeded IndexedDB bug with truncated JSON body, light + dark mode screenshots (Preview tree expand/collapse + Response highlighting).

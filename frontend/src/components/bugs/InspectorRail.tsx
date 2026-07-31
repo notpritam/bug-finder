@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { Bug, ConsoleEntry, NetEntry } from "@/lib/types";
 import { cn, formatBytes, formatDuration, formatOffset, pathOf, shortName } from "@/lib/utils";
-import { JsonView, TextView, tryParseJson } from "@/components/common/JsonView";
+import { JsonTree, JsonView, TextView, tryParseJson } from "@/components/common/JsonView";
 import type { ReplayClock } from "@/components/replay/useReplayClock";
 
 type Tab = "activity" | "console" | "network" | "elements" | "info";
@@ -582,7 +582,7 @@ function NetworkDetail({
               <EmptyLine label="No response body." />
             ) : responseJson != null ? (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
-                <JsonView data={responseJson} search={query} />
+                <JsonTree data={responseJson} />
               </PayloadWithCopy>
             ) : (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
@@ -598,6 +598,10 @@ function NetworkDetail({
           <DetailSection title="Raw response body">
             {!hasResponseBody ? (
               <EmptyLine label="No response body." />
+            ) : responseJson != null ? (
+              <PayloadWithCopy raw={entry.responseBody ?? ""}>
+                <JsonView data={responseJson} search={query} />
+              </PayloadWithCopy>
             ) : (
               <PayloadWithCopy raw={entry.responseBody ?? ""}>
                 <TextView text={entry.responseBody ?? ""} search={query} />
