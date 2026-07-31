@@ -193,7 +193,7 @@ function Shell({
         /* keep inline */
       }
     }
-    const bug = bugFromDraft(toFile, bugs, user ?? ANONYMOUS);
+    const bug = bugFromDraft(toFile, bugs, user ?? ANONYMOUS, people);
     persistSubmittedBug(bug);
     setBugs((prev) => [bug, ...prev]);
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
@@ -257,6 +257,7 @@ function Shell({
                 hydrated={hydrated}
                 drafts={myDrafts}
                 user={user}
+                people={people}
                 onChange={updateDraft}
                 onSubmit={submitDraft}
                 onDiscard={discardDraft}
@@ -374,6 +375,7 @@ function DraftRoute({
   hydrated,
   drafts,
   user,
+  people,
   onChange,
   onSubmit,
   onDiscard,
@@ -381,6 +383,7 @@ function DraftRoute({
   hydrated: boolean;
   drafts: Draft[];
   user: AuthUser | null;
+  people: Reporter[];
   onChange: (d: Draft) => void;
   onSubmit: (d: Draft) => void;
   onDiscard: (id: string) => void;
@@ -399,6 +402,7 @@ function DraftRoute({
       key={draft.id}
       draft={draft}
       user={user}
+      people={people}
       onChange={onChange}
       onSubmit={onSubmit}
       onDiscard={onDiscard}

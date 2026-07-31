@@ -184,4 +184,6 @@ export interface Draft {
   initiative?: string;
   jobId?: string;
   credentials?: TestCredentials;
+  /** Suggested assignee (persisted so the AI suggestion survives page reload). */
+  assigneeId?: string | null;
 }

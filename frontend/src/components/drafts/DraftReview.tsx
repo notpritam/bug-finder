@@ -1,12 +1,13 @@
 // ABOUTME: Review a captured session before filing it — play/scrub the replay, trim it with
 // ABOUTME: handles, add flags at timestamps, inspect evidence, fill the report, then submit.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Sparkles, Trash2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { Bug, BugSeverity, Draft } from "@/lib/types";
+import type { Bug, BugSeverity, Draft, Reporter } from "@/lib/types";
 import type { AuthUser } from "@/lib/auth";
 import { ENV_META, ENVS, envFromUrl, INITIATIVES, PRESET_TAGS, type Env } from "@/lib/meta";
-import { cn, formatDuration, formatOffset, hostOf } from "@/lib/utils";
+import { aiDraftFill, type FillField } from "@/lib/ai";
+import { cn, formatDuration, formatOffset, hostOf, initials } from "@/lib/utils";
 import { BUG_SEVERITY_ORDER } from "@/components/common/bits";
 import { ReplayPlayer, type Trim } from "@/components/replay/ReplayPlayer";
 import { useReplayClock } from "@/components/replay/useReplayClock";
@@ -15,6 +16,7 @@ import { InspectorRail } from "@/components/bugs/InspectorRail";
 export function DraftReview({
   draft,
   user,
+  people,
   onChange,
   onSubmit,
   onDiscard,
@@ -22,6 +24,7 @@ export function DraftReview({
 }: {
   draft: Draft;
   user: AuthUser | null;
+  people: Reporter[];
   onChange: (draft: Draft) => void;
   onSubmit: (draft: Draft) => void;
   onDiscard: (id: string) => void;
@@ -30,8 +33,54 @@ export function DraftReview({
   const navigate = useNavigate();
   const clock = useReplayClock(draft.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
+  const [aiBusy, setAiBusy] = useState<FillField | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiReason, setAiReason] = useState<string | null>(null);
   const trim: Trim = draft.trim ?? { in: 0, out: draft.durationMs };
   const isTrimmed = trim.in > 0 || trim.out < draft.durationMs;
+
+  const runAiFill = async (field: FillField) => {
+    setAiBusy(field);
+    setAiError(null);
+    try {
+      const res = await aiDraftFill({
+        draft,
+        allowedTags: PRESET_TAGS as unknown as string[],
+        initiatives: INITIATIVES,
+        team: people,
+        field,
+      });
+      const patch: Partial<Draft> = {};
+      if (field === "all" || field === "title") {
+        if (res.title) patch.title = res.title;
+      }
+      if (field === "all" || field === "description") {
+        if (res.description) patch.description = res.description;
+      }
+      if (field === "all" || field === "severity") {
+        if (res.severity) patch.severity = res.severity as BugSeverity;
+      }
+      if (field === "all" || field === "tags") {
+        if (res.tags?.length) patch.tags = res.tags;
+      }
+      if (field === "all" || field === "assignee") {
+        if (res.assigneeId !== undefined) patch.assigneeId = res.assigneeId ?? null;
+      }
+      if (field === "all" || field === "initiative") {
+        if (res.initiative) patch.initiative = res.initiative;
+      }
+      if (res.assigneeReason && (field === "all" || field === "assignee")) {
+        setAiReason(res.assigneeReason);
+      }
+      if (Object.keys(patch).length > 0) {
+        onChange({ ...draft, ...patch });
+      }
+    } catch (e) {
+      setAiError((e as Error).message || "AI fill failed");
+    } finally {
+      setAiBusy(null);
+    }
+  };
 
   // Stage + inspector consume a Bug-shaped view of the draft (no status/identity yet).
   const bugView = useMemo<Bug>(
@@ -194,8 +243,24 @@ export function DraftReview({
                 onClick={addFlag}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[12px] font-semibold text-primary-foreground transition hover:opacity-90"
                 title="Drop a flag at the current playhead"
+                data-testid="draft-add-flag-btn"
               >
                 <Flag className="size-3.5" /> Add flag at {formatOffset(clock.t)}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runAiFill("all")}
+                disabled={aiBusy !== null}
+                title="Let AI parse your notes + console/network errors and fill the whole report"
+                data-testid="draft-ai-fill-all-btn"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition",
+                  "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm hover:opacity-90",
+                  aiBusy !== null && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Sparkles className={cn("size-3.5", aiBusy === "all" && "animate-pulse")} />
+                {aiBusy === "all" ? "Thinking…" : "AI fill report"}
               </button>
               <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
                 <Scissors className="size-3.5" />
@@ -210,6 +275,12 @@ export function DraftReview({
                   <X className="size-3.5" /> Reset trim
                 </button>
               )}
+              {aiError && (
+                <span className="flex w-full items-center gap-1.5 text-[11.5px] font-medium text-destructive" data-testid="draft-ai-error">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  {aiError}
+                </span>
+              )}
               {droppedSummary && (
                 <span className="flex w-full items-center gap-1.5 text-[11.5px] font-medium text-amber-700">
                   <AlertTriangle className="size-3.5 shrink-0" />
@@ -220,7 +291,14 @@ export function DraftReview({
           </div>
 
           <div className="flex min-h-0 flex-col gap-4">
-            <ReportForm draft={draft} onChange={onChange} />
+            <ReportForm
+              draft={draft}
+              onChange={onChange}
+              people={people}
+              aiBusy={aiBusy}
+              aiReason={aiReason}
+              onAiField={(f) => void runAiFill(f)}
+            />
             <div className="h-[420px] lg:h-auto lg:min-h-0 lg:flex-1">
               <InspectorRail bug={bugView} clock={draftClock} selectedPick={selectedPick} onSelectPick={setSelectedPick} />
             </div>
@@ -325,15 +403,39 @@ export function DraftReview({
   );
 }
 
-function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) => void }) {
+function ReportForm({
+  draft,
+  onChange,
+  people,
+  aiBusy,
+  aiReason,
+  onAiField,
+}: {
+  draft: Draft;
+  onChange: (d: Draft) => void;
+  people: Reporter[];
+  aiBusy: FillField | null;
+  aiReason: string | null;
+  onAiField: (field: FillField) => void;
+}) {
   // Tags need a raw text buffer — parsing on every keystroke would eat the commas being typed.
   const [tagsText, setTagsText] = useState(() => (draft.tags ?? []).join(", "));
+  // Keep the tag input in sync when AI writes to draft.tags externally.
+  useEffect(() => {
+    setTagsText((draft.tags ?? []).join(", "));
+  }, [draft.tags]);
+
+  const assignee = draft.assigneeId ? people.find((p) => p.id === draft.assigneeId) ?? null : null;
+
   return (
     <section className="shrink-0 space-y-3 rounded-xl border border-border/60 bg-card p-4 shadow-card">
       <div>
-        <label htmlFor="draft-title" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-          Title
-        </label>
+        <div className="mb-1 flex items-center justify-between">
+          <label htmlFor="draft-title" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Title
+          </label>
+          <MagicButton field="title" busy={aiBusy} onClick={onAiField} />
+        </div>
         <input
           id="draft-title"
           type="text"
@@ -341,18 +443,23 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
           placeholder="What's broken, in one line"
           onChange={(e) => onChange({ ...draft, title: e.target.value })}
           className="h-9 w-full rounded-lg border border-border/60 bg-card px-2.5 text-[13px] font-medium outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50"
+          data-testid="draft-title-input"
         />
       </div>
       <div className="flex gap-3">
         <div className="flex-1">
-          <label htmlFor="draft-severity" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-            Severity
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label htmlFor="draft-severity" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+              Severity
+            </label>
+            <MagicButton field="severity" busy={aiBusy} onClick={onAiField} />
+          </div>
           <select
             id="draft-severity"
             value={draft.severity ?? "medium"}
             onChange={(e) => onChange({ ...draft, severity: e.target.value as BugSeverity })}
             className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none focus:border-primary/50"
+            data-testid="draft-severity-select"
           >
             {BUG_SEVERITY_ORDER.map((s) => (
               <option key={s} value={s}>
@@ -381,9 +488,12 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
         </div>
       </div>
       <div>
-        <label htmlFor="draft-tags" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-          Tags
-        </label>
+        <div className="mb-1 flex items-center justify-between">
+          <label htmlFor="draft-tags" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Tags
+          </label>
+          <MagicButton field="tags" busy={aiBusy} onClick={onAiField} />
+        </div>
         <input
           id="draft-tags"
           type="text"
@@ -394,6 +504,7 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
             onChange({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) });
           }}
           className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+          data-testid="draft-tags-input"
         />
         <div className="mt-1.5 flex flex-wrap gap-1">
           {PRESET_TAGS.filter((t) => !(draft.tags ?? []).includes(t)).map((tag) => (
@@ -413,11 +524,51 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
           ))}
         </div>
       </div>
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <label htmlFor="draft-assignee" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Assignee <span className="normal-case text-muted-foreground/60">(auto-suggested from the issue)</span>
+          </label>
+          <MagicButton field="assignee" busy={aiBusy} onClick={onAiField} />
+        </div>
+        <select
+          id="draft-assignee"
+          value={draft.assigneeId ?? ""}
+          onChange={(e) => onChange({ ...draft, assigneeId: e.target.value || null })}
+          className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none focus:border-primary/50"
+          data-testid="draft-assignee-select"
+        >
+          <option value="">Unassigned</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.team ? ` — ${p.team}` : ""}
+              {p.role ? ` (${p.role})` : ""}
+            </option>
+          ))}
+        </select>
+        {assignee && aiReason && (
+          <div
+            className="mt-1.5 flex items-start gap-1.5 rounded-md border border-violet-200/70 bg-violet-50/70 px-2 py-1 text-[11px] leading-snug text-violet-900 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-200"
+            data-testid="draft-assignee-reason"
+          >
+            <Sparkles className="mt-0.5 size-3 shrink-0" />
+            <span>
+              <span className="font-semibold">{initials(assignee.name)}</span>
+              {" · "}
+              {aiReason}
+            </span>
+          </div>
+        )}
+      </div>
       <div className="flex gap-3">
         <div className="flex-1">
-          <label htmlFor="draft-initiative" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-            Initiative <span className="normal-case text-muted-foreground/60">(optional)</span>
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label htmlFor="draft-initiative" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+              Initiative <span className="normal-case text-muted-foreground/60">(optional)</span>
+            </label>
+            <MagicButton field="initiative" busy={aiBusy} onClick={onAiField} />
+          </div>
           <input
             id="draft-initiative"
             type="text"
@@ -471,15 +622,19 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
         </div>
       </div>
       <div>
-        <label htmlFor="draft-desc" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-          Description
-        </label>
+        <div className="mb-1 flex items-center justify-between">
+          <label htmlFor="draft-desc" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            Description
+          </label>
+          <MagicButton field="description" busy={aiBusy} onClick={onAiField} />
+        </div>
         <textarea
           id="draft-desc"
           value={draft.description ?? ""}
           placeholder="What did you expect, and what happened instead?"
           onChange={(e) => onChange({ ...draft, description: e.target.value })}
-          className="h-20 w-full resize-none rounded-lg border border-border/60 bg-card p-2.5 text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+          className="min-h-[5rem] w-full resize-y rounded-lg border border-border/60 bg-card p-2.5 text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+          data-testid="draft-description-input"
         />
       </div>
       {draft.notes != null && (
@@ -496,5 +651,36 @@ function ReportForm({ draft, onChange }: { draft: Draft; onChange: (d: Draft) =>
         </div>
       )}
     </section>
+  );
+}
+
+/** Small sparkle "fill this field with AI" button next to a form label. */
+function MagicButton({
+  field,
+  busy,
+  onClick,
+}: {
+  field: Exclude<FillField, "all">;
+  busy: FillField | null;
+  onClick: (field: FillField) => void;
+}) {
+  const isBusy = busy === field;
+  const disabled = busy !== null;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(field)}
+      disabled={disabled}
+      title={`AI: fill ${field}`}
+      data-testid={`draft-ai-fill-${field}-btn`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide transition",
+        "text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-500/10",
+        disabled && !isBusy && "cursor-not-allowed opacity-40",
+      )}
+    >
+      <Sparkles className={cn("size-3", isBusy && "animate-pulse")} />
+      {isBusy ? "…" : "AI"}
+    </button>
   );
 }

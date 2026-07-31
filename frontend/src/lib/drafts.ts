@@ -97,7 +97,7 @@ function clip<T extends { t: number }>(items: T[], t0: number, t1: number): T[] 
 let submitSeq = 0;
 
 /** A reviewed draft → a filed Bug. Applies the trim window and stamps identity/history. */
-export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter): Bug {
+export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter, people: Reporter[] = []): Bug {
   const t0 = draft.trim?.in ?? 0;
   const t1 = draft.trim?.out ?? draft.durationMs;
   const maxNum = Math.max(100, ...existing.map((b) => Number(b.humanId.split("-")[1]) || 100));
@@ -127,7 +127,7 @@ export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter):
     tags: draft.tags ?? [],
     pageUrl: draft.pageUrl,
     reporter,
-    assignee: null,
+    assignee: (draft.assigneeId ? people.find((p) => p.id === draft.assigneeId) : null) ?? null,
     createdAt: now,
     updatedAt: now,
     durationMs: t1 - t0,
