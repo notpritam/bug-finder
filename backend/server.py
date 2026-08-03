@@ -497,6 +497,107 @@ async def list_comments(
     return await _list_comments(human_id, since_ms=since)
 
 
+# ------------------- initiatives -------------------
+
+initiatives_col = db["initiatives"]
+
+VALID_INITIATIVE_STATUS = {"in_qa", "shipped", "archived"}
+
+
+class InitiativeOwner(BaseModel):
+    id: str
+    name: str
+    email: str = ""
+
+
+class InitiativeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = ""
+    team: str | None = None
+    owner: InitiativeOwner
+
+
+class InitiativePatch(BaseModel):
+    requesterId: str
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = None
+    team: str | None = None
+    status: str | None = None
+    owner: InitiativeOwner | None = None
+
+
+def _clean_initiative(doc: dict[str, Any]) -> dict[str, Any]:
+    doc.pop("_id", None)
+    doc.pop("nameLower", None)
+    return doc
+
+
+@app.get("/api/initiatives")
+async def list_initiatives() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    async for doc in initiatives_col.find().sort("createdAt", -1):
+        out.append(_clean_initiative(doc))
+    return out
+
+
+@app.post("/api/initiatives", status_code=201)
+async def create_initiative(req: InitiativeCreate) -> dict[str, Any]:
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(400, "name is required")
+    dup = await initiatives_col.find_one({"nameLower": name.lower(), "status": {"$ne": "archived"}})
+    if dup:
+        raise HTTPException(409, f'an initiative named "{name}" already exists')
+    now = _now_ms()
+    doc = {
+        "id": f"init-{uuid.uuid4().hex[:10]}",
+        "name": name,
+        "nameLower": name.lower(),
+        "description": req.description.strip(),
+        "team": (req.team or "").strip() or None,
+        "owner": req.owner.model_dump(),
+        "status": "in_qa",
+        "createdAt": now,
+        "updatedAt": now,
+        "shippedAt": None,
+    }
+    await initiatives_col.insert_one(doc)
+    return _clean_initiative(doc)
+
+
+@app.patch("/api/initiatives/{initiative_id}")
+async def update_initiative(initiative_id: str, patch: InitiativePatch) -> dict[str, Any]:
+    doc = await initiatives_col.find_one({"id": initiative_id})
+    if not doc:
+        raise HTTPException(404, f"initiative {initiative_id} not found")
+    if patch.requesterId != (doc.get("owner") or {}).get("id"):
+        raise HTTPException(403, "only the initiative owner can edit it")
+    upd: dict[str, Any] = {"updatedAt": _now_ms()}
+    if patch.name is not None:
+        name = patch.name.strip()
+        if not name:
+            raise HTTPException(400, "name cannot be empty")
+        upd["name"] = name
+        upd["nameLower"] = name.lower()
+    if patch.description is not None:
+        upd["description"] = patch.description.strip()
+    if patch.team is not None:
+        upd["team"] = patch.team.strip() or None
+    if patch.owner is not None:
+        upd["owner"] = patch.owner.model_dump()
+    if patch.status is not None:
+        if patch.status not in VALID_INITIATIVE_STATUS:
+            raise HTTPException(400, f"status must be one of {sorted(VALID_INITIATIVE_STATUS)}")
+        upd["status"] = patch.status
+        if patch.status == "shipped" and not doc.get("shippedAt"):
+            upd["shippedAt"] = _now_ms()
+        if patch.status == "in_qa":
+            upd["shippedAt"] = None
+    await initiatives_col.update_one({"id": initiative_id}, {"$set": upd})
+    fresh = await initiatives_col.find_one({"id": initiative_id})
+    return _clean_initiative(fresh or {})
+
+
 # ------------------- MCP directory -------------------
 
 @app.get("/api/mcp/bugs/{human_id}")

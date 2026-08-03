@@ -5,7 +5,8 @@ import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Sparkles, Trash2, X } f
 import { useNavigate } from "react-router-dom";
 import type { Bug, BugSeverity, Draft, Reporter } from "@/lib/types";
 import type { AuthUser } from "@/lib/auth";
-import { ENV_META, ENVS, envFromUrl, INITIATIVES, PRESET_TAGS, type Env } from "@/lib/meta";
+import { ENV_META, ENVS, envFromUrl, PRESET_TAGS, type Env } from "@/lib/meta";
+import { listInitiatives, type Initiative } from "@/lib/initiatives";
 import { aiDraftFill, type FillField } from "@/lib/ai";
 import { cn, formatDuration, formatOffset, hostOf, initials } from "@/lib/utils";
 import { BUG_SEVERITY_ORDER } from "@/components/common/bits";
@@ -36,6 +37,11 @@ export function DraftReview({
   const [aiBusy, setAiBusy] = useState<FillField | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiReason, setAiReason] = useState<string | null>(null);
+  const [initiatives, setInitiatives] = useState<Initiative[]>([]);
+  useEffect(() => {
+    void listInitiatives().then(setInitiatives).catch(() => {});
+  }, []);
+  const activeInitiatives = initiatives.filter((i) => i.status === "in_qa");
   const trim: Trim = draft.trim ?? { in: 0, out: draft.durationMs };
   const isTrimmed = trim.in > 0 || trim.out < draft.durationMs;
 
@@ -46,7 +52,7 @@ export function DraftReview({
       const res = await aiDraftFill({
         draft,
         allowedTags: PRESET_TAGS as unknown as string[],
-        initiatives: INITIATIVES,
+        initiatives: activeInitiatives.map((i) => i.name),
         team: people,
         field,
       });
@@ -73,8 +79,13 @@ export function DraftReview({
       if ((isAll && isEmpty(draft.assigneeId)) || field === "assignee") {
         if (res.assigneeId !== undefined) patch.assigneeId = res.assigneeId ?? null;
       }
-      if ((isAll && isEmpty(draft.initiative)) || field === "initiative") {
-        if (res.initiative) patch.initiative = res.initiative;
+      if ((isAll && isEmpty(draft.initiativeId)) || field === "initiative") {
+        const match = res.initiative ? initiatives.find((i) => i.name === res.initiative) : undefined;
+        if (match) {
+          patch.initiative = match.name;
+          patch.initiativeId = match.id;
+          patch.category = "initiative";
+        }
       }
       if (res.assigneeReason && (field === "all" || field === "assignee")) {
         setAiReason(res.assigneeReason);
@@ -302,6 +313,7 @@ export function DraftReview({
               draft={draft}
               onChange={onChange}
               people={people}
+              initiatives={activeInitiatives}
               aiBusy={aiBusy}
               aiReason={aiReason}
               onAiField={(f) => void runAiFill(f)}
@@ -414,6 +426,7 @@ function ReportForm({
   draft,
   onChange,
   people,
+  initiatives,
   aiBusy,
   aiReason,
   onAiField,
@@ -421,6 +434,7 @@ function ReportForm({
   draft: Draft;
   onChange: (d: Draft) => void;
   people: Reporter[];
+  initiatives: Initiative[];
   aiBusy: FillField | null;
   aiReason: string | null;
   onAiField: (field: FillField) => void;
@@ -571,25 +585,68 @@ function ReportForm({
       <div className="flex gap-3">
         <div className="flex-1">
           <div className="mb-1 flex items-center justify-between">
-            <label htmlFor="draft-initiative" className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-              Initiative <span className="normal-case text-muted-foreground/60">(optional)</span>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+              Bug source
             </label>
             <MagicButton field="initiative" busy={aiBusy} onClick={onAiField} />
           </div>
-          <input
-            id="draft-initiative"
-            type="text"
-            list="bf-initiatives"
-            value={draft.initiative ?? ""}
-            placeholder="Checkout Revamp"
-            onChange={(e) => onChange({ ...draft, initiative: e.target.value })}
-            className="h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
-          />
-          <datalist id="bf-initiatives">
-            {INITIATIVES.map((i) => (
-              <option key={i} value={i} />
-            ))}
-          </datalist>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                onChange({ ...draft, category: "production", initiativeId: undefined, initiative: undefined })
+              }
+              className={cn(
+                "h-8 flex-1 rounded-lg border px-2 text-[11.5px] font-medium transition-colors",
+                (draft.category ?? (draft.initiativeId ? "initiative" : "production")) === "production"
+                  ? "border-primary/50 bg-primary text-primary-foreground"
+                  : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="draft-source-production"
+              title="An existing bug found in the live product — not tied to anyone's current work"
+            >
+              Production bug
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...draft, category: "initiative" })}
+              className={cn(
+                "h-8 flex-1 rounded-lg border px-2 text-[11.5px] font-medium transition-colors",
+                (draft.category ?? (draft.initiativeId ? "initiative" : "production")) === "initiative"
+                  ? "border-primary/50 bg-primary text-primary-foreground"
+                  : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="draft-source-initiative"
+              title="Found while QA-testing a dev's work in progress"
+            >
+              Initiative
+            </button>
+          </div>
+          {(draft.category === "initiative" || (!draft.category && draft.initiativeId)) && (
+            <select
+              value={draft.initiativeId ?? ""}
+              onChange={(e) => {
+                const ini = initiatives.find((i) => i.id === e.target.value);
+                onChange({
+                  ...draft,
+                  category: "initiative",
+                  initiativeId: ini?.id,
+                  initiative: ini?.name,
+                });
+              }}
+              className="mt-1.5 h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none focus:border-primary/50"
+              aria-label="Choose the initiative this bug was found in"
+              data-testid="draft-initiative-select"
+            >
+              <option value="">Choose an initiative…</option>
+              {initiatives.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                  {i.team ? ` — ${i.team}` : ""} ({i.owner.name})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex-1">
           <label htmlFor="draft-job" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">

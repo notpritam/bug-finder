@@ -149,6 +149,8 @@ export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter, 
     notes: draft.notes,
     env: draft.env ?? envFromUrl(draft.pageUrl),
     initiative: draft.initiative?.trim() || undefined,
+    initiativeId: draft.initiativeId || undefined,
+    category: draft.initiativeId ? "initiative" : "production",
     jobId: draft.jobId?.trim() || undefined,
     credentials:
       draft.credentials && (draft.credentials.username || draft.credentials.password || draft.credentials.notes)

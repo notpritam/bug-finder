@@ -136,6 +136,10 @@ export interface Bug {
   env?: string;
   /** Larger effort this bug belongs to (e.g. "Checkout Revamp"). */
   initiative?: string;
+  /** Id of the initiative this bug was filed against — source of truth for grouping. */
+  initiativeId?: string;
+  /** Where the bug came from: QA on initiative work, or an existing production issue. */
+  category?: "initiative" | "production";
   /** External job/ticket/build id, when relevant. */
   jobId?: string;
   /** The app-under-test account used while reproducing. */
@@ -182,6 +186,8 @@ export interface Draft {
   tags?: string[];
   env?: string;
   initiative?: string;
+  initiativeId?: string;
+  category?: "initiative" | "production";
   jobId?: string;
   credentials?: TestCredentials;
   /** Suggested assignee (persisted so the AI suggestion survives page reload). */

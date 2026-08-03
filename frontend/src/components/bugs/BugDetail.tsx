@@ -279,7 +279,28 @@ export function BugDetail({
             </span>
             {bug.initiative && (
               <span>
-                Initiative <span className="font-medium text-foreground">{bug.initiative}</span>
+                Initiative{" "}
+                {bug.initiativeId ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/initiatives/${bug.initiativeId}`)}
+                    className="font-medium text-foreground underline decoration-border underline-offset-2 transition-colors hover:decoration-foreground"
+                    data-testid="bug-initiative-link"
+                  >
+                    {bug.initiative}
+                  </button>
+                ) : (
+                  <span className="font-medium text-foreground">{bug.initiative}</span>
+                )}
+              </span>
+            )}
+            {bug.category === "production" && (
+              <span
+                className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground"
+                data-testid="bug-category-production"
+                title="Existing production issue — not tied to initiative work"
+              >
+                Production bug
               </span>
             )}
             {bug.jobId && (

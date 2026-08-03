@@ -30,6 +30,10 @@ import { BugsPage } from "@/components/bugs/BugsPage";
 import { BugDetail } from "@/components/bugs/BugDetail";
 import { DraftsPage } from "@/components/drafts/DraftsPage";
 import { DraftReview } from "@/components/drafts/DraftReview";
+import { InitiativesPage } from "@/components/initiatives/InitiativesPage";
+import { InitiativeDetail } from "@/components/initiatives/InitiativeDetail";
+import { InsightsPage } from "@/components/insights/InsightsPage";
+import { listInitiatives, type Initiative } from "@/lib/initiatives";
 
 const DemoCapture = lazy(() => import("@/components/drafts/DemoCapture").then((m) => ({ default: m.DemoCapture })));
 
@@ -40,6 +44,8 @@ const VIEW_TO_PATH: Record<SidebarView, string> = {
   resolved: "/bugs/resolved",
   mine: "/bugs/mine",
   drafts: "/drafts",
+  initiatives: "/initiatives",
+  insights: "/insights",
 };
 const PATH_TO_VIEW: Record<string, SidebarView> = {
   open: "open",
@@ -64,6 +70,15 @@ function Shell({
   const [drafts, setDrafts] = useState<Draft[]>([]);
   // Deep links to persisted bugs/drafts must wait for IndexedDB before deciding "not found".
   const [hydrated, setHydrated] = useState(false);
+  const [initiatives, setInitiatives] = useState<Initiative[]>([]);
+
+  const refreshInitiatives = async () => {
+    const list = await listInitiatives().catch(() => [] as Initiative[]);
+    setInitiatives(list);
+  };
+  useEffect(() => {
+    void refreshInitiatives();
+  }, []);
 
   // Everyone assignable: you, registered accounts, and the demo roster (deduped by email —
   // a registered account supersedes its roster stand-in).
@@ -132,7 +147,15 @@ function Shell({
 
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
-    seg[0] === "drafts" ? "drafts" : seg[0] === "bugs" ? (PATH_TO_VIEW[seg[1]] ?? "all") : "all";
+    seg[0] === "drafts"
+      ? "drafts"
+      : seg[0] === "initiatives"
+        ? "initiatives"
+        : seg[0] === "insights"
+          ? "insights"
+          : seg[0] === "bugs"
+            ? (PATH_TO_VIEW[seg[1]] ?? "all")
+            : "all";
 
   /** Mutate one bug, appending a history event, and persist it. */
   const amendBug = (id: string, patch: Partial<Bug>, historyDetail: string | null) => {
@@ -214,6 +237,7 @@ function Shell({
         onView={(v) => navigate(VIEW_TO_PATH[v])}
         bugs={bugs}
         draftCount={myDrafts.length}
+        initiativeCount={initiatives.filter((i) => i.status === "in_qa").length}
         user={user}
         onSignIn={() => navigate("/auth")}
         onSignOut={onSignOut}
@@ -265,6 +289,36 @@ function Shell({
             }
           />
           <Route
+            path="/initiatives"
+            element={
+              user ? (
+                <InitiativesPage bugs={bugs} user={user} initiatives={initiatives} onRefresh={refreshInitiatives} />
+              ) : (
+                <Navigate to="/auth" replace />
+              )
+            }
+          />
+          <Route
+            path="/initiatives/:id"
+            element={
+              user ? (
+                <InitiativeRoute
+                  initiatives={initiatives}
+                  bugs={bugs}
+                  user={user}
+                  people={people}
+                  onRefresh={refreshInitiatives}
+                />
+              ) : (
+                <Navigate to="/auth" replace />
+              )
+            }
+          />
+          <Route
+            path="/insights"
+            element={user ? <InsightsPage bugs={bugs} initiatives={initiatives} /> : <Navigate to="/auth" replace />}
+          />
+          <Route
             path="/auth"
             element={
               user ? (
@@ -287,6 +341,28 @@ function Shell({
       </main>
     </div>
   );
+}
+
+function InitiativeRoute({
+  initiatives,
+  bugs,
+  user,
+  people,
+  onRefresh,
+}: {
+  initiatives: Initiative[];
+  bugs: Bug[];
+  user: AuthUser;
+  people: Reporter[];
+  onRefresh: () => Promise<void>;
+}) {
+  const { id } = useParams();
+  const initiative = initiatives.find((i) => i.id === id);
+  if (!initiative) {
+    // Still loading the list, or a bad link — the list page sorts it out either way.
+    return initiatives.length === 0 ? null : <Navigate to="/initiatives" replace />;
+  }
+  return <InitiativeDetail initiative={initiative} bugs={bugs} user={user} people={people} onRefresh={onRefresh} />;
 }
 
 function BugsRoute({

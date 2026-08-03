@@ -1,5 +1,5 @@
 // ABOUTME: Collapsible left rail — brand mark, bug views with live counts, drafts inbox,
-// ABOUTME: and a user footer. Counts come from App state so submitted bugs update them.
+// ABOUTME: workspace (initiatives + insights), and a user footer. Counts come from App state.
 import {
   Bug as BugIcon,
   ChevronsLeft,
@@ -10,6 +10,7 @@ import {
   Loader2,
   LogOut,
   Moon,
+  Rocket,
   ShieldCheck,
   Sun,
   UserRound,
@@ -20,7 +21,7 @@ import type { AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/common/bits";
 
-export type SidebarView = "all" | "open" | "in_progress" | "resolved" | "mine" | "drafts";
+export type SidebarView = "all" | "open" | "in_progress" | "resolved" | "mine" | "drafts" | "initiatives" | "insights";
 
 const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[], meId: string) => number }[] = [
   { key: "all", label: "All bugs", icon: <Inbox className="size-[17px]" />, count: (b) => b.length },
@@ -37,6 +38,7 @@ export function Sidebar({
   onView,
   bugs,
   draftCount,
+  initiativeCount,
   user,
   onSignIn,
   onSignOut,
@@ -47,6 +49,7 @@ export function Sidebar({
   onView: (v: SidebarView) => void;
   bugs: Bug[];
   draftCount: number;
+  initiativeCount: number;
   user: AuthUser | null;
   onSignIn: () => void;
   onSignOut: () => void;
@@ -124,19 +127,24 @@ export function Sidebar({
           <>
             {!collapsed && (
               <p className="px-2 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-                Coming soon
+                Workspace
               </p>
             )}
-            <div
-              className={cn(
-                "flex h-9 w-full cursor-not-allowed items-center gap-2.5 rounded-lg px-2 text-[13px] font-medium text-muted-foreground/50",
-                collapsed && "justify-center px-0",
-              )}
-              title="Insights — coming soon"
-            >
-              <LayoutDashboard className="size-[17px]" />
-              {!collapsed && "Insights"}
-            </div>
+            <NavRow
+              collapsed={collapsed}
+              icon={<Rocket className="size-[17px]" />}
+              label="Initiatives"
+              count={initiativeCount}
+              active={view === "initiatives"}
+              onClick={() => onView("initiatives")}
+            />
+            <NavRow
+              collapsed={collapsed}
+              icon={<LayoutDashboard className="size-[17px]" />}
+              label="Insights"
+              active={view === "insights"}
+              onClick={() => onView("insights")}
+            />
           </>
         )}
       </nav>
@@ -258,7 +266,7 @@ function NavRow({
   collapsed: boolean;
   icon: ReactNode;
   label: string;
-  count: number;
+  count?: number;
   active: boolean;
   onClick: () => void;
   highlight?: boolean;
@@ -273,19 +281,22 @@ function NavRow({
         active ? "bg-sidebar-accent text-foreground" : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
         collapsed && "justify-center px-0",
       )}
+      data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       {icon}
       {!collapsed && (
         <>
           <span className="flex-1 text-left">{label}</span>
-          <span
-            className={cn(
-              "text-[11px] font-semibold",
-              highlight ? "rounded-full bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" : "text-muted-foreground/80",
-            )}
-          >
-            {count}
-          </span>
+          {count != null && (
+            <span
+              className={cn(
+                "text-[11px] font-semibold",
+                highlight ? "rounded-full bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" : "text-muted-foreground/80",
+              )}
+            >
+              {count}
+            </span>
+          )}
         </>
       )}
     </button>
