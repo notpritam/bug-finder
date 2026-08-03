@@ -119,9 +119,11 @@ export interface DevScore {
 export function devScoreboard(initiatives: Initiative[], bugs: Bug[]): DevScore[] {
   const byOwner = new Map<string, { owner: Reporter; inis: Initiative[] }>();
   for (const ini of initiatives) {
-    const entry = byOwner.get(ini.owner.id) ?? { owner: ini.owner, inis: [] };
+    // Key by email when present — resilient to session id drift across sign-ins.
+    const key = ini.owner.email?.toLowerCase() || ini.owner.id;
+    const entry = byOwner.get(key) ?? { owner: ini.owner, inis: [] };
     entry.inis.push(ini);
-    byOwner.set(ini.owner.id, entry);
+    byOwner.set(key, entry);
   }
   const rows: DevScore[] = [];
   for (const { owner, inis } of byOwner.values()) {

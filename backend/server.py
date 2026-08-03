@@ -577,6 +577,11 @@ async def update_initiative(initiative_id: str, patch: InitiativePatch) -> dict[
         name = patch.name.strip()
         if not name:
             raise HTTPException(400, "name cannot be empty")
+        dup = await initiatives_col.find_one(
+            {"nameLower": name.lower(), "status": {"$ne": "archived"}, "id": {"$ne": initiative_id}}
+        )
+        if dup:
+            raise HTTPException(409, f'an initiative named "{name}" already exists')
         upd["name"] = name
         upd["nameLower"] = name.lower()
     if patch.description is not None:

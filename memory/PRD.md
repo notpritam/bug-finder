@@ -125,3 +125,12 @@
 ## 2026-06 (fork): Resizable inspector panel
 - BugDetail split (player | inspector) now has a draggable vertical divider (role=separator, data-testid inspector-resize-handle): drag to set inspector width (clamped 300px..container-420px), persisted in localStorage `bf.rail-w` via CSS var --rail-w; double-click resets to default clamp(340px,30%,560px). Desktop (lg) only; mobile stacking unchanged.
 - Verified via automation: drag 489→802px, persistence, double-click reset.
+
+## 2026-06 (fork): Initiatives + bug categorization + dev scoreboard (TESTED — iteration_1.json 100%)
+- Backend: /api/initiatives CRUD in server.py (Mongo `initiatives` col). Create (anyone, creator=owner, status in_qa), list, PATCH (owner-only via requesterId; name/desc/team/owner-transfer/status; shipped sets shippedAt, reopen clears; dup-name 409 on create AND rename).
+- Bug model: Bug/Draft gained `initiativeId` + `category` ("initiative" | "production"). bugFromDraft stamps them.
+- Draft review: "Bug source" picker (chips draft-source-production / draft-source-initiative + draft-initiative-select of active initiatives). AI fill maps suggested initiative name → id and only picks from active ones.
+- New pages: /initiatives (list+create+filters, InitiativesPage.tsx), /initiatives/:id (detail: stat cards, bug list, owner edit/transfer/ship/archive, shipped report card, InitiativeDetail.tsx), /insights (dev scoreboard, InsightsPage.tsx). Sidebar "Workspace" section (Initiatives + Insights) replaced the "coming soon" stub.
+- Metrics (lib/initiatives.ts): quality score = fixed/(total − not_a_bug − wont_fix). Dev scoreboard: cleanliness (1/(1+avg valid bugs per initiative)) 50% + fix rate 50%, keyed by owner email (id-drift resilient).
+- BugDetail: initiative is a link to its page; production bugs get a "Production bug" badge.
+- Test suite: /app/backend/tests/test_initiatives.py (11 pytest cases). Credentials/session notes in /app/memory/test_credentials.md.
