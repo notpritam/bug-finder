@@ -451,7 +451,7 @@ async def bug_summary_md(human_id: str) -> dict[str, str]:
 async def _list_comments(human_id: str, since_ms: int = 0) -> list[CommentOut]:
     cur = comments_col.find(
         {"bugHumanId": human_id, "at": {"$gt": since_ms}}
-    ).sort("at", 1)
+    ).sort("at", 1).limit(500)
     out: list[CommentOut] = []
     async for doc in cur:
         out.append(
@@ -549,7 +549,7 @@ def _clean_initiative(doc: dict[str, Any]) -> dict[str, Any]:
 @app.get("/api/initiatives")
 async def list_initiatives() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    async for doc in initiatives_col.find().sort("createdAt", -1):
+    async for doc in initiatives_col.find().sort("createdAt", -1).limit(200):
         out.append(_clean_initiative(doc))
     return out
 
