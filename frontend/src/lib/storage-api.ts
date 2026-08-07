@@ -1,6 +1,6 @@
 // ABOUTME: Client for the Emergent File Storage API — rrweb recordings are uploaded as JSON
 // ABOUTME: files and read back via their download URL, keeping IndexedDB rows light.
-const STORAGE_API = "https://storage-api-docs.internal.emergent.host/api";
+const STORAGE_API = import.meta.env.REACT_APP_STORAGE_API_URL as string;
 
 export function storageDownloadUrl(fileId: string): string {
   return `${STORAGE_API}/files/${fileId}/download`;
