@@ -24,6 +24,7 @@ import type { Bug } from "@/lib/types";
 import { fetchStoredJson } from "@/lib/storage-api";
 import { cn, formatOffset, pathOf } from "@/lib/utils";
 import { MockPage } from "./MockPage";
+import { VideoStage } from "./VideoStage";
 import type { ReplayClock } from "./useReplayClock";
 
 // rrweb (~250 KB) only loads when a bug actually has a pixel recording.
@@ -99,6 +100,15 @@ export function ReplayPlayer({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const { events: rrwebEvents, loading: rrwebLoading } = useRrwebEvents(bug);
+  // The DOM replay is the default view: it is sharp, seekable and inspectable. The video is
+  // the fallback for what rrweb cannot reconstruct — canvas, <video>, cross-origin iframes.
+  const [showVideo, setShowVideo] = useState(false);
+  const hasVideo = Boolean(bug.videoFileId);
+  // The DOM replay is available if events are loaded or still arriving. Which mode is actually
+  // showing is derived, never guessed: video only wins when it exists AND is either chosen or
+  // the only thing there is.
+  const hasDom = Boolean(rrwebEvents) || rrwebLoading;
+  const mode: "video" | "dom" = hasVideo && (showVideo || !hasDom) ? "video" : "dom";
 
   // The stage renders at the recorded viewport's aspect ratio so normalized coords
   // (cursor, ripples, picked-element rects) land exactly where they were captured.
@@ -153,7 +163,9 @@ export function ReplayPlayer({
       <div ref={stageRef} className="relative grid min-h-0 flex-1 place-items-center bg-zinc-200/80 dark:bg-zinc-950/50">
         {box && (
           <div className="relative overflow-hidden bg-zinc-100 shadow-sm" style={{ width: box.w, height: box.h }}>
-            {rrwebEvents ? (
+            {mode === "video" ? (
+              <VideoStage fileId={bug.videoFileId!} clock={clock} offset={bug.rrwebOffset ?? 0} />
+            ) : rrwebEvents ? (
               <Suspense fallback={<div className="grid h-full place-items-center text-[12px] text-muted-foreground">Loading replay…</div>}>
                 <RrwebStage
                   events={rrwebEvents}
@@ -172,6 +184,38 @@ export function ReplayPlayer({
             )}
           </div>
         )}
+        {/* Always visible once there is anything to play, so it is never ambiguous which of the
+            two you are looking at. The unavailable side stays disabled and says why. */}
+        {hasDom || hasVideo ? (
+          <div className="absolute right-2 top-2 z-40 flex overflow-hidden rounded-md border border-white/20 text-[10px] font-semibold shadow-sm">
+            <button
+              type="button"
+              disabled={!hasDom}
+              onClick={() => setShowVideo(false)}
+              className={cn(
+                "px-2 py-1 transition-colors",
+                mode === "dom" ? "bg-white text-zinc-900" : "bg-zinc-900/75 text-zinc-200 hover:bg-zinc-900/90",
+                !hasDom && "cursor-not-allowed opacity-40 hover:bg-zinc-900/75",
+              )}
+              title={hasDom ? "Reconstructed DOM — sharp at any zoom, and inspectable" : "No DOM recording on this capture"}
+            >
+              DOM replay
+            </button>
+            <button
+              type="button"
+              disabled={!hasVideo}
+              onClick={() => setShowVideo(true)}
+              className={cn(
+                "px-2 py-1 transition-colors",
+                mode === "video" ? "bg-white text-zinc-900" : "bg-zinc-900/75 text-zinc-200 hover:bg-zinc-900/90",
+                !hasVideo && "cursor-not-allowed opacity-40 hover:bg-zinc-900/75",
+              )}
+              title={hasVideo ? "The literal footage — shows canvas, video and cross-origin frames" : "No video on this capture"}
+            >
+              Video
+            </button>
+          </div>
+        ) : null}
         {!playing && t === 0 && (
           <button
             type="button"
@@ -330,7 +374,9 @@ function Timeline({
             type="button"
             onClick={() => clock.seek(m.t)}
             className={cn("absolute -top-2 z-10 -translate-x-1/2 transition-opacity", !inTrim(m.t) && "opacity-30")}
-            style={{ left: `${(m.t / duration) * 100}%` }}
+            // Pre-roll markers (negative `t` — captured before recording started) pin to the
+            // very start rather than sliding off the left edge of the track.
+            style={{ left: `${(Math.max(0, m.t) / duration) * 100}%` }}
             aria-label={`${m.kind === "error" ? "Error" : "Flag"}: ${m.label ?? "marker"} at ${formatOffset(m.t)}`}
             title={`${m.label ?? "Marker"} · ${formatOffset(m.t)}`}
           >

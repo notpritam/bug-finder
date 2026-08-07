@@ -1,6 +1,7 @@
 // ABOUTME: One initiative — owner header, live quality metrics, its bug list, and the
 // ABOUTME: owner's lifecycle controls (edit, transfer, mark shipped, archive).
 import { useState } from "react";
+import { CopyLink } from "@/components/common/CopyLink";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Pencil, Rocket, Ship } from "lucide-react";
 import type { Bug, Reporter } from "@/lib/types";
@@ -197,14 +198,13 @@ export function InitiativeDetail({
           ) : (
             <ul className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-card">
               {list.map((b) => (
-                <li key={b.id} className="border-b border-border/50 last:border-b-0">
+                <li key={b.id} className="flex items-center gap-1 border-b border-border/50 pr-2 last:border-b-0">
                   <button
                     type="button"
-                    onClick={() => navigate(`/bug/${b.humanId}`)}
+                    onClick={() => navigate(`/session/${b.humanId}`)}
                     className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50"
                     data-testid={`initiative-bug-row-${b.humanId}`}
                   >
-                    <span className="w-16 shrink-0 font-mono text-[11px] text-muted-foreground">{b.humanId}</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{b.title}</span>
                     <BugSeverityPill severity={b.severity} />
                     <BugStatusBadge status={b.status} />
@@ -216,6 +216,7 @@ export function InitiativeDetail({
                       {relativeTime(b.createdAt)}
                     </span>
                   </button>
+                  <CopyLink path={`/session/${b.humanId}`} label={b.title} />
                 </li>
               ))}
             </ul>

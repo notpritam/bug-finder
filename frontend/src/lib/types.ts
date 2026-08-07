@@ -87,6 +87,29 @@ export interface BugEnvironment {
   cores?: number;
 }
 
+/** Page performance at capture time — vitals sit alongside the replay so a "it felt slow"
+ *  report arrives with numbers attached. */
+export interface Screenshot {
+  id: string;
+  /** ms from recording start — a shot pins to the timeline like a flag does. */
+  t: number;
+  /** Storage-service file id of the annotated image. */
+  fileId?: string;
+  /** Path under the reporter's Downloads where the original was kept. */
+  savedAs?: string;
+  selector?: string;
+  note?: string;
+}
+
+export interface PagePerf {
+  lcp?: number;
+  cls?: number;
+  inp?: number;
+  ttfb?: number;
+  domContentLoaded?: number;
+  load?: number;
+}
+
 /** One simulated rrweb-style event driving the replay stage. `t` is ms from start. */
 export type ReplayEvent =
   | { t: number; kind: "move"; x: number; y: number }
@@ -100,9 +123,14 @@ export type ReplayEvent =
 export interface BugEvent {
   id: string;
   actor: string;
-  kind: "created" | "status" | "comment" | "assigned";
+  kind: "created" | "status" | "comment" | "assigned" | "edited";
   detail: string;
   at: number;
+  /** Set on `edited`: which field changed and what it held before. Structured rather than
+   *  prose so the history is a real version trail — who changed what, from what, when. */
+  field?: string;
+  from?: string;
+  to?: string;
 }
 
 /** A filed bug ticket, as submitted by the capture extension. */
@@ -153,6 +181,17 @@ export interface Bug {
   /** Playback offset into the rrweb recording (ms) — set when the draft was trimmed, since the
    *  rrweb event stream keeps its full length (the initial snapshot lives at the start). */
   rrwebOffset?: number;
+  /** Low-bitrate tab video recorded alongside the DOM stream — the literal footage, for the
+   *  things rrweb cannot reconstruct (canvas, <video>, cross-origin iframes). */
+  videoFileId?: string;
+  /** The extension draft this was filed from — lets a recording that finished uploading
+   *  after the bug was filed find its way back to the right ticket. */
+  draftId?: string;
+  /** Screenshots the reporter drew on while recording. */
+  shots?: Screenshot[];
+  /** Evidence gathered before recording started carries a negative `t`, reaching back this far. */
+  preRollMs?: number;
+  perf?: PagePerf;
 }
 
 /** A captured session awaiting review — what the extension hands off before a bug exists.
@@ -173,11 +212,18 @@ export interface Draft {
   markers: BugMarker[];
   visits: BugVisit[];
   environment: BugEnvironment;
+  perf?: PagePerf;
   notes?: string;
+  /** Console/network entries with a negative `t` were captured before the user pressed
+   *  record — this is how far back that reaches. */
+  preRollMs?: number;
   /** Real rrweb recording from the extension, when present inline. */
   rrweb?: unknown[];
   /** Storage-service file id of the recording (uploaded by the extension or demo capture). */
   rrwebFileId?: string;
+  /** Low-bitrate tab video recorded alongside the DOM stream. */
+  videoFileId?: string;
+  shots?: Screenshot[];
   /** Kept window of the recording — events outside are dropped on submit. */
   trim?: { in: number; out: number };
   title?: string;

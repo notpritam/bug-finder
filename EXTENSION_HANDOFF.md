@@ -269,3 +269,52 @@ Anonymous submissions are supported: just omit `reporter` on the draft.
 
 That's everything. Ping me (dashboard owner) if the draft shape needs a new field
 — easy to add on my side without breaking your builds.
+
+---
+
+## 9. Additions (extension side, already live on both ends)
+
+The `source` / `type` strings in §2 are unchanged. These are additive.
+
+### 9.1 Acks now name what they are acking
+
+Several captures can be in flight at once, so an ack without an id is ambiguous:
+
+```js
+{ source: "bugfinder-dashboard", type: "draft-received", id: "<draft id>" }
+{ source: "bugfinder-dashboard", type: "draft-filed", id: "<draft id>", humanId: "BF-101" }
+```
+The extension falls back to dropping its oldest queued draft when `id` is absent.
+
+### 9.2 `autoSubmit` — the side panel already collected the report
+
+A draft carrying `autoSubmit: true` is filed on arrival rather than opened for review;
+the dashboard posts `draft-filed` back so the panel can show the bug id. The panel
+sends `title`, `env`, `tags` and `jobId`; severity and description are left for
+✨ AI fill, which reads the evidence below.
+
+### 9.3 `draft-patch` — the recording arrives after the report
+
+Filing never waits on the rrweb upload. When the upload lands, the extension sends:
+
+```js
+{ source: "bugfinder-extension", type: "draft-patch",
+  patch: { id: "<draft id>", rrwebFileId: "..." } }   // or { rrweb: [...] } if the upload failed
+```
+The dashboard attaches it to the draft, or to the bug whose `draftId` matches, and acks
+with `{ type: "draft-patch-received", id }`. This is why `Bug.draftId` exists.
+
+### 9.4 Pre-roll: evidence from before recording started
+
+The extension buffers console/network from page load, so the entries that matter are
+usually already gone by the time someone presses record. Those entries ship with a
+**negative `t`**, reaching back to `-preRollMs` (new field on the payload, ms).
+Untrimmed drafts keep them on submit; trimming is an explicit choice and drops them.
+Anything rendering on the timeline should clamp `t` to 0.
+
+### 9.5 Richer network + performance
+
+`requestHeaders` / `responseHeaders` are now populated (authorization, cookie and
+token-shaped values are redacted in the page before they leave it), slow asset loads
+arrive via resource timing with `type: "img" | "css" | "js" | "font"` and `status: 0`,
+and a `perf` object carries `{ lcp, cls, inp, ttfb, domContentLoaded, load }`.

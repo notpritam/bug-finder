@@ -11,6 +11,15 @@ export interface AuthUser extends Reporter {
 /** Stand-in reporter for submissions made without an account. */
 export const ANONYMOUS: Reporter = { id: "anon", name: "Anonymous", email: "" };
 
+/** Roles don't exist server-side yet, so admin is an allowlist for now. Deleting is
+ *  irreversible and a shared dashboard is read by people who shouldn't have it — when real
+ *  user types land, this is the one function that has to change. */
+const ADMIN_EMAILS = new Set(["pritam@emergent.sh", "ankit@emergent.sh"]);
+
+export function isAdmin(user: { email?: string } | null | undefined): boolean {
+  return Boolean(user?.email && ADMIN_EMAILS.has(user.email.trim().toLowerCase()));
+}
+
 interface StoredUser extends AuthUser {
   passwordHash: string;
 }

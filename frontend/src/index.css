@@ -1,5 +1,8 @@
-@import "tailwindcss";
+/* The font import must come first: `@import "tailwindcss"` expands inline, so anything after
+   it sits below real rules and the bundler drops it — which is why the typography never
+   loaded in the built CSS. */
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap");
+@import "tailwindcss";
 
 /* Class-based dark mode: `dark:` utilities apply under <html class="dark">. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -119,41 +122,47 @@
 .dark {
   color-scheme: dark;
 
-  --background: oklch(0.195 0.006 264);
-  --foreground: oklch(0.925 0.004 264);
-  --card: oklch(0.245 0.006 264);
-  --card-foreground: oklch(0.925 0.004 264);
-  --popover: oklch(0.245 0.006 264);
-  --popover-foreground: oklch(0.925 0.004 264);
+  /* Linear-derived ground. Every value below is a token from the reference control surface;
+     its rules are held here too — no shadows, no gradients, no pure black or white, 1px
+     borders, and colour kept out of the chrome so it only ever means status. */
+  --background: #08090a;
+  --foreground: #e3e5e6;
+  --card: #121314;
+  --card-foreground: #e3e5e6;
+  --popover: #151617;
+  --popover-foreground: #f7f8f8;
 
-  --primary: oklch(0.91 0.004 264);
-  --primary-foreground: oklch(0.22 0.006 264);
+  /* Inverted fill, as on Linear's own primary buttons. */
+  --primary: #e3e5e6;
+  --primary-foreground: #101112;
 
-  --secondary: oklch(0.3 0.006 264);
-  --secondary-foreground: oklch(0.85 0.005 264);
-  --muted: oklch(0.295 0.006 264);
-  --muted-foreground: oklch(0.64 0.007 264);
-  --accent: oklch(0.315 0.007 264);
-  --accent-foreground: oklch(0.9 0.004 264);
-  --destructive: oklch(0.62 0.19 26);
-  --destructive-foreground: oklch(0.97 0 0);
+  --secondary: #151617;
+  --secondary-foreground: #d0d6e0;
+  --muted: #151617;
+  --muted-foreground: #8a8f98;
+  --accent: #171819;
+  --accent-foreground: #f7f8f8;
+  --destructive: #eb5757;
+  --destructive-foreground: #f7f8f8;
 
-  --border: oklch(0.31 0.007 264);
-  --input: oklch(0.34 0.008 264);
-  --ring: oklch(0.72 0.006 264);
+  --border: #232425;
+  --input: #222324;
+  --ring: #4d5157;
 
-  --sidebar: oklch(0.165 0.006 264);
-  --sidebar-foreground: oklch(0.925 0.004 264);
-  --sidebar-accent: oklch(0.26 0.007 264);
-  --sidebar-border: oklch(0.24 0.006 264);
+  --sidebar: #101112;
+  --sidebar-foreground: #aaafb8;
+  --sidebar-accent: #171819;
+  --sidebar-border: #1b1c1d;
 
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.28);
-  --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.32), 0 14px 34px rgba(0, 0, 0, 0.38);
-  --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-panel: 0 14px 54px rgba(0, 0, 0, 0.55);
+  /* The reference bans shadows outright: depth comes from the ground/panel step and a 1px
+     rule. Neutralised rather than deleted so no component loses its var() reference. */
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-pop: none;
+  --shadow-panel: none;
 
   /* JSON viewer palette — VS Code "Dark+"-inspired, tuned for dark cards. */
-  --json-bg: oklch(0.215 0.006 264);
+  --json-bg: #1e1f20;
   --json-key: #7ee787;
   --json-string: #a5d6ff;
   --json-number: #f2cc60;
@@ -163,6 +172,13 @@
 }
 
 /* Severity pills — deeper tints so they read as the same objects on dark surfaces. */
+/* The reference forbids shadows: depth comes from the ground→panel step and a 1px rule, not
+   from a blur. Neutralised here rather than at each call site, so light mode keeps its own
+   look and a single line reverses the decision. */
+.dark :is(.shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
+  box-shadow: none;
+}
+
 .dark .pill-critical {
   background: #4c1a26;
   color: #fda4af;

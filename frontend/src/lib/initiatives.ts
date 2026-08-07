@@ -13,6 +13,8 @@ export interface Initiative {
   team: string | null;
   owner: Reporter;
   status: InitiativeStatus;
+  /** Sessions tagged with any of these belong here automatically. */
+  tags?: string[];
   createdAt: number;
   updatedAt: number;
   shippedAt: number | null;
@@ -74,8 +76,14 @@ export async function updateInitiative(
 
 /** Bugs filed against this initiative (id match, with legacy name fallback). */
 export function bugsForInitiative(bugs: Bug[], initiative: Initiative): Bug[] {
+  // Three ways in, most explicit first: an id set at submit time, the legacy name match, and
+  // — the one that scales — any tag the initiative claims. Tagging is all a reporter does.
+  const claimed = (initiative.tags ?? []).map((t) => t.toLowerCase());
   return bugs.filter(
-    (b) => b.initiativeId === initiative.id || (!b.initiativeId && b.initiative === initiative.name),
+    (b) =>
+      b.initiativeId === initiative.id ||
+      (!b.initiativeId && b.initiative === initiative.name) ||
+      (claimed.length > 0 && b.tags.some((t) => claimed.includes(t.toLowerCase()))),
   );
 }
 

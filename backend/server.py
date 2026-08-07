@@ -515,6 +515,9 @@ class InitiativeCreate(BaseModel):
     description: str = ""
     team: str | None = None
     owner: InitiativeOwner
+    # Sessions carrying any of these tags belong to the initiative automatically — the reporter
+    # never has to pick an initiative, they just tag what they captured.
+    tags: list[str] = []
 
 
 class InitiativePatch(BaseModel):
@@ -524,6 +527,17 @@ class InitiativePatch(BaseModel):
     team: str | None = None
     status: str | None = None
     owner: InitiativeOwner | None = None
+    tags: list[str] | None = None
+
+
+def _norm_tags(tags: list[str]) -> list[str]:
+    """Lowercase, de-duplicated, order preserved — matching must not hinge on capitalisation."""
+    seen: list[str] = []
+    for t in tags:
+        clean = t.strip().lower()
+        if clean and clean not in seen:
+            seen.append(clean)
+    return seen[:20]
 
 
 def _clean_initiative(doc: dict[str, Any]) -> dict[str, Any]:
@@ -557,6 +571,7 @@ async def create_initiative(req: InitiativeCreate) -> dict[str, Any]:
         "team": (req.team or "").strip() or None,
         "owner": req.owner.model_dump(),
         "status": "in_qa",
+        "tags": _norm_tags(req.tags),
         "createdAt": now,
         "updatedAt": now,
         "shippedAt": None,
@@ -590,6 +605,8 @@ async def update_initiative(initiative_id: str, patch: InitiativePatch) -> dict[
         upd["team"] = patch.team.strip() or None
     if patch.owner is not None:
         upd["owner"] = patch.owner.model_dump()
+    if patch.tags is not None:
+        upd["tags"] = _norm_tags(patch.tags)
     if patch.status is not None:
         if patch.status not in VALID_INITIATIVE_STATUS:
             raise HTTPException(400, f"status must be one of {sorted(VALID_INITIATIVE_STATUS)}")

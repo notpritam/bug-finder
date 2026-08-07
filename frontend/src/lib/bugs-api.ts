@@ -29,6 +29,13 @@ export function publishBug(bug: Bug): void {
   }).catch(() => undefined);
 }
 
+/** Drop the snapshot agents read. Best-effort like publishing — the local delete is what the
+ *  user sees, and a failure here must not leave the UI pretending nothing happened. */
+export function unpublishBug(humanId: string): void {
+  if (!BASE) return;
+  void fetch(`${BASE}/api/bugs/${humanId}`, { method: "DELETE" }).catch(() => undefined);
+}
+
 export async function fetchAgentComments(humanId: string, sinceMs = 0): Promise<AgentComment[]> {
   if (!BASE) return [];
   const res = await fetch(

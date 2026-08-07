@@ -1,8 +1,9 @@
 // ABOUTME: The bugs list — search + status/severity filter chips over rows of filed bugs,
 // ABOUTME: each with replay length, error count, reporter, and inline status.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CopyLink } from "@/components/common/CopyLink";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Bug as BugIcon, ChevronRight, Clapperboard, Search } from "lucide-react";
+import { AlertTriangle, Bug as BugIcon, ChevronRight, Clapperboard, Search, Trash2 } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
 import { cn, formatDuration, hostOf, relativeTime } from "@/lib/utils";
@@ -30,12 +31,17 @@ export function BugsPage({
   view,
   onOpenBug,
   onStatusChange,
+  canDelete = false,
+  onDelete,
 }: {
   bugs: Bug[];
   me: Reporter | null;
   view: SidebarView;
   onOpenBug: (id: string) => void;
   onStatusChange: (id: string, status: BugStatus) => void;
+  /** Admins only — deleting is irreversible and shared dashboards have read-only visitors. */
+  canDelete?: boolean;
+  onDelete?: (ids: string[]) => void;
 }) {
   const navigate = useNavigate();
   // Filters + search live in the URL so any filtered view is shareable.
@@ -57,7 +63,32 @@ export function BugsPage({
   const setStatusFilter = (v: StatusFilter) => setParam("status", v);
   const setSeverityFilter = (v: SeverityFilter) => setParam("severity", v);
   const setSearch = (v: string) => setParam("q", v);
+  // Tags are how a session gets associated with an initiative, so this is an exact match —
+  // unlike the search box, where "auth" would also hit a title mentioning authentication.
+  const tagFilter = params.get("tag") ?? "all";
+  const setTagFilter = (v: string) => setParam("tag", v);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const removeSelected = () => {
+    const ids = [...selected];
+    if (!ids.length || !onDelete) return;
+    const ok = window.confirm(
+      `Delete ${ids.length} ${ids.length === 1 ? "session" : "sessions"}?\n\n` +
+        "This removes them from the board and from the agent API. It cannot be undone.",
+    );
+    if (!ok) return;
+    onDelete(ids);
+    setSelected(new Set());
+  };
   const searchRef = useRef<HTMLInputElement | null>(null);
   const activeRowRef = useRef<HTMLLIElement | null>(null);
 
@@ -77,12 +108,19 @@ export function BugsPage({
     }
   }, [bugs, view, me]);
 
-  // Status chips only exist on "All bugs" — sidebar views already constrain status, and two
+  // Status chips only exist on "All sessions" — sidebar views already constrain status, and two
   // competing status filters could contradict each other.
   const statusChipsVisible = view === "all";
   const effectiveStatus = statusChipsVisible ? statusFilter : "all";
 
   const query = search.trim().toLowerCase();
+  // Tags actually present in this scope, most-used first. Derived rather than hardcoded, so a
+  // tag someone invents in the extension shows up here on its first use.
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const b of scoped) for (const t of b.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [scoped]);
   // Everything except the status filter — the status-counts strip breaks THIS set down,
   // so its numbers always sum to what's on screen.
   const preStatus = useMemo(
@@ -90,13 +128,14 @@ export function BugsPage({
       scoped.filter(
         (b) =>
           (severityFilter === "all" || b.severity === severityFilter) &&
+          (tagFilter === "all" || b.tags.includes(tagFilter)) &&
           (query === "" ||
             b.title.toLowerCase().includes(query) ||
             b.humanId.toLowerCase().includes(query) ||
             b.pageUrl.toLowerCase().includes(query) ||
             b.tags.some((t) => t.toLowerCase().includes(query))),
       ),
-    [scoped, severityFilter, query],
+    [scoped, severityFilter, tagFilter, query],
   );
   const visible = useMemo(
     () => preStatus.filter((b) => effectiveStatus === "all" || b.status === effectiveStatus),
@@ -227,7 +266,68 @@ export function BugsPage({
           </span>
         </div>
 
+        {tagCounts.length > 0 ? (
+          <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-[11px] font-medium text-muted-foreground">Tag</span>
+            <button
+              type="button"
+              onClick={() => setTagFilter("all")}
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                tagFilter === "all"
+                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground",
+              )}
+            >
+              Any
+            </button>
+            {tagCounts.map(([tag, count]) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => setTagFilter(tagFilter === tag ? "all" : tag)}
+                title={`Only sessions tagged "${tag}"`}
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  tagFilter === tag
+                    ? "border-primary/50 bg-primary/10 text-foreground"
+                    : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
+              >
+                {tag} <span className="opacity-55">{count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <ul className="flex flex-col gap-1.5">
+          {canDelete && selected.size > 0 ? (
+            <li className="mb-1 flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-[12px]">
+              <span className="font-semibold">{selected.size} selected</span>
+              <button
+                type="button"
+                className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => setSelected(new Set(visible.map((b) => b.id)))}
+              >
+                Select all {visible.length}
+              </button>
+              <button
+                type="button"
+                className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => setSelected(new Set())}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={removeSelected}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1 font-semibold text-white hover:bg-red-700"
+              >
+                <Trash2 className="size-3.5" />
+                Delete {selected.size}
+              </button>
+            </li>
+          ) : null}
           {visible.map((bug, i) => {
             const errors = bug.console.filter((c) => c.level === "error").length;
             return (
@@ -239,17 +339,24 @@ export function BugsPage({
                   i === activeIndex
                     ? "border-primary/60 shadow-[inset_3px_0_0_0_var(--primary)] ring-1 ring-primary/30"
                     : "border-border/60 hover:border-primary/40 hover:bg-accent/40",
+                  selected.has(bug.id) && "border-primary/50 bg-primary/5",
                 )}
                 style={{ "--stagger": i } as React.CSSProperties}
               >
+                {canDelete ? (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(bug.id)}
+                    onChange={() => toggleSelected(bug.id)}
+                    aria-label={`Select ${bug.humanId}`}
+                    className="size-3.5 shrink-0 accent-[var(--primary)]"
+                  />
+                ) : null}
                 <button
                   type="button"
                   onClick={() => onOpenBug(bug.id)}
                   className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  <span className="w-14 shrink-0 font-mono text-[11px] font-medium tracking-wide text-muted-foreground">
-                    {bug.humanId}
-                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold text-foreground">{bug.title}</p>
                     <p className="mt-0.5 flex items-center gap-2 text-[11.5px] text-muted-foreground">
@@ -277,6 +384,7 @@ export function BugsPage({
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
                 </button>
                 <InlineStatus status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
+                <CopyLink path={`/session/${bug.humanId}`} label={bug.title} />
               </li>
             );
           })}

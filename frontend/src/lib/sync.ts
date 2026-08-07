@@ -5,7 +5,8 @@ import type { Bug, Draft } from "./types";
 export type SyncMessage =
   | { kind: "draft-put"; draft: Draft }
   | { kind: "draft-remove"; id: string }
-  | { kind: "bug-put"; bug: Bug };
+  | { kind: "bug-put"; bug: Bug }
+  | { kind: "bug-remove"; id: string };
 
 const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("bf-sync") : null;
 

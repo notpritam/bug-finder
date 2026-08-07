@@ -128,6 +128,12 @@ export function DraftReview({
       events: [],
       rrweb: draft.rrweb,
       rrwebFileId: draft.rrwebFileId,
+      // The review page runs the same player and inspector as a filed bug, so it needs the
+      // same evidence — video, screenshots and vitals included.
+      videoFileId: draft.videoFileId,
+      shots: draft.shots,
+      perf: draft.perf,
+      preRollMs: draft.preRollMs,
     }),
     [draft],
   );

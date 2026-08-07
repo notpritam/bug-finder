@@ -17,6 +17,7 @@ import {
 import { ReplayPlayer } from "@/components/replay/ReplayPlayer";
 import { useReplayClock } from "@/components/replay/useReplayClock";
 import { InspectorRail } from "./InspectorRail";
+import { EditableText } from "./EditableText";
 
 export function BugDetail({
   bug,
@@ -28,6 +29,7 @@ export function BugDetail({
   onSeverityChange,
   onAssigneeChange,
   onComment,
+  onEdit,
 }: {
   bug: Bug;
   me: Reporter | null;
@@ -40,13 +42,15 @@ export function BugDetail({
   onSeverityChange: (id: string, severity: BugSeverity) => void;
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
   onComment: (id: string, body: string) => void;
+  /** Free-text edits. Any signed-in user may make them; history records each field. */
+  onEdit: (id: string, patch: Partial<Bug>) => void;
 }) {
   const navigate = useNavigate();
   const [linkCopied, setLinkCopied] = useState(false);
   const [agentCopied, setAgentCopied] = useState(false);
   const [agentComments, setAgentComments] = useState<AgentComment[]>([]);
   const copyLink = () => {
-    const url = `${location.origin}/bug/${bug.humanId}${clock.t > 0 ? `?t=${(clock.t / 1000).toFixed(1)}` : ""}`;
+    const url = `${location.origin}/session/${bug.humanId}${clock.t > 0 ? `?t=${(clock.t / 1000).toFixed(1)}` : ""}`;
     void navigator.clipboard?.writeText(url).then(() => {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 1500);
@@ -174,7 +178,7 @@ export function BugDetail({
           onClick={onBack}
           className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
-          <ArrowLeft className="size-4" /> All bugs
+          <ArrowLeft className="size-4" /> All sessions
           <kbd className="ml-1 rounded border border-border/60 bg-muted px-1 font-mono text-[9.5px]">esc</kbd>
         </button>
 
@@ -198,9 +202,9 @@ export function BugDetail({
               <button
                 key={tag}
                 type="button"
-                onClick={() => navigate(`/bugs?q=${encodeURIComponent(tag)}`)}
+                onClick={() => navigate(`/sessions?tag=${encodeURIComponent(tag)}`)}
                 className="rounded-full bg-secondary px-2 py-px text-[10.5px] font-medium text-secondary-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title={`Show all bugs tagged "${tag}"`}
+                title={`Show all sessions tagged "${tag}"`}
               >
                 {tag}
               </button>
@@ -236,7 +240,12 @@ export function BugDetail({
               </a>
             </span>
           </div>
-          <h1 className="text-[19px] font-bold leading-snug tracking-tight">{bug.title}</h1>
+          <EditableText
+            value={bug.title}
+            onSave={(v) => onEdit(bug.id, { title: v })}
+            label="Bug title"
+            className="text-[19px] font-bold leading-snug tracking-tight"
+          />
           <div className="flex flex-wrap items-center gap-4 text-[12px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <UserAvatar name={bug.reporter.name} seed={bug.reporter.id} size={20} />
@@ -399,7 +408,14 @@ export function BugDetail({
         {/* Below-the-fold cards */}
         <div className="grid grid-cols-1 gap-4 pb-10 lg:grid-cols-3">
           <Card title="Description" className="lg:col-span-2">
-            <p className="max-w-[75ch] whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">{bug.description}</p>
+            <EditableText
+              value={bug.description}
+              onSave={(v) => onEdit(bug.id, { description: v })}
+              label="Description"
+              multiline
+              placeholder="No description yet — click to add one."
+              className="max-w-[75ch] whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85"
+            />
             {bug.notes && (
               <div className="mt-3 flex gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
                 <StickyNote className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -420,7 +436,7 @@ export function BugDetail({
                   <li key={rb.id}>
                     <button
                       type="button"
-                      onClick={() => navigate(`/bug/${rb.humanId}`)}
+                      onClick={() => navigate(`/session/${rb.humanId}`)}
                       className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-accent"
                       title={`${rb.humanId} — shares a tag or page with this bug`}
                     >

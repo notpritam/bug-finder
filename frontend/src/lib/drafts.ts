@@ -4,7 +4,7 @@ import type { Bug, BugSeverity, Draft, ReplayEvent, Reporter } from "./types";
 import { envFromUrl } from "./meta";
 import { idb } from "./store";
 import { broadcast } from "./sync";
-import { publishBug } from "./bugs-api";
+import { publishBug, unpublishBug } from "./bugs-api";
 
 const DRAFTS_KEY = "bf.drafts";
 const SUBMITTED_KEY = "bf.submitted";
@@ -57,6 +57,14 @@ export function persistSubmittedBug(bug: Bug) {
   publishBug(bug);
 }
 
+/** Forget a filed bug. IndexedDB is what the UI reads and the backend snapshot is what agents
+ *  read, so both have to go or a "deleted" bug stays visible to one of them. */
+export function removeBug(bug: Bug) {
+  void idb.delete("bugs", bug.id);
+  broadcast({ kind: "bug-remove", id: bug.id });
+  unpublishBug(bug.humanId);
+}
+
 /** The extension's DraftPayload → our Draft. Shapes already align; fill in dashboard-only fields. */
 export function draftFromExtension(payload: Record<string, unknown>, reporter?: Reporter): Draft {
   const env = (payload.environment ?? {}) as Draft["environment"];
@@ -85,16 +93,31 @@ export function draftFromExtension(payload: Record<string, unknown>, reporter?: 
       cores: env.cores,
       memoryGb: env.memoryGb,
     },
+    perf: (payload.perf as Draft["perf"]) ?? undefined,
+    preRollMs: payload.preRollMs ? Number(payload.preRollMs) : undefined,
     notes: payload.notes ? String(payload.notes) : undefined,
-    env: envFromUrl(String(payload.pageUrl ?? "")),
+    // First-level report fields the extension's side panel collected before hand-off.
+    title: payload.title ? String(payload.title) : undefined,
+    description: payload.description ? String(payload.description) : undefined,
+    severity: (payload.severity as Draft["severity"]) ?? undefined,
+    tags: Array.isArray(payload.tags) ? (payload.tags as string[]) : undefined,
+    env: payload.env ? String(payload.env) : envFromUrl(String(payload.pageUrl ?? "")),
+    jobId: payload.jobId ? String(payload.jobId) : undefined,
+    // Chosen in the extension's side panel at capture time.
+    initiative: payload.initiative ? String(payload.initiative) : undefined,
+    initiativeId: payload.initiativeId ? String(payload.initiativeId) : undefined,
     rrweb: Array.isArray(payload.rrweb) && payload.rrweb.length > 1 ? (payload.rrweb as unknown[]) : undefined,
     rrwebFileId: payload.rrwebFileId ? String(payload.rrwebFileId) : undefined,
+    videoFileId: payload.videoFileId ? String(payload.videoFileId) : undefined,
+    shots: Array.isArray(payload.shots) ? (payload.shots as Draft["shots"]) : undefined,
   };
 }
 
-/** Clip an event list to [in, out] and re-zero timestamps. */
-function clip<T extends { t: number }>(items: T[], t0: number, t1: number): T[] {
-  return items.filter((i) => i.t >= t0 && i.t <= t1).map((i) => ({ ...i, t: i.t - t0 }));
+/** Clip an event list to the kept window and re-zero timestamps. `lower` sits before zero on
+ *  an untrimmed draft: console and network entries captured before the user pressed record
+ *  carry a negative `t`, and they are usually where the bug actually started. */
+function clip<T extends { t: number }>(items: T[], lower: number, upper: number, zero: number): T[] {
+  return items.filter((i) => i.t >= lower && i.t <= upper).map((i) => ({ ...i, t: i.t - zero }));
 }
 
 let submitSeq = 0;
@@ -103,6 +126,9 @@ let submitSeq = 0;
 export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter, people: Reporter[] = []): Bug {
   const t0 = draft.trim?.in ?? 0;
   const t1 = draft.trim?.out ?? draft.durationMs;
+  // Trimming is an explicit choice about what to keep, so it drops the pre-roll too. Leave the
+  // draft untrimmed and everything from before the recording rides along.
+  const lower = draft.trim ? t0 : -(draft.preRollMs ?? 0);
   const maxNum = Math.max(100, ...existing.map((b) => Number(b.humanId.split("-")[1]) || 100));
   const now = Date.now();
 
@@ -111,11 +137,11 @@ export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter, 
   const startVisit = visitsBefore[visitsBefore.length - 1];
   const visits = [
     ...(startVisit ? [{ ...startVisit, t: 0 }] : []),
-    ...clip(draft.visits.filter((v) => v.t > t0), t0, t1),
+    ...clip(draft.visits.filter((v) => v.t > t0), t0, t1, t0),
   ];
 
   // Same for replay nav events: the stage needs a nav at t=0 to know which page it starts on.
-  const replay = clip(draft.replay, t0, t1) as ReplayEvent[];
+  const replay = clip(draft.replay, lower, t1, t0) as ReplayEvent[];
   if (startVisit && !replay.some((e) => e.kind === "nav" && e.t === 0)) {
     replay.unshift({ t: 0, kind: "nav", url: startVisit.url });
   }
@@ -136,21 +162,27 @@ export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter, 
     durationMs: t1 - t0,
     scenario: draft.scenario,
     replay,
-    markers: clip(draft.markers, t0, t1),
+    markers: clip(draft.markers, lower, t1, t0),
     visits,
-    console: clip(draft.console, t0, t1),
-    network: clip(draft.network, t0, t1),
+    console: clip(draft.console, lower, t1, t0),
+    network: clip(draft.network, lower, t1, t0),
     pickedElements: clip(
       draft.pickedElements.map((p) => ({ ...p, t: p.t ?? 0 })),
       t0,
       t1,
+      t0,
     ),
     environment: draft.environment,
+    perf: draft.perf,
+    preRollMs: draft.trim ? undefined : draft.preRollMs,
+    draftId: draft.id,
     notes: draft.notes,
     env: draft.env ?? envFromUrl(draft.pageUrl),
     initiative: draft.initiative?.trim() || undefined,
     initiativeId: draft.initiativeId || undefined,
-    category: draft.initiativeId ? "initiative" : "production",
+    // A name typed in the extension counts as much as a picked id — the mirror needs a
+    // dashboard tab to have been open, and that shouldn't decide what kind of bug this is.
+    category: draft.initiativeId || draft.initiative?.trim() ? "initiative" : "production",
     jobId: draft.jobId?.trim() || undefined,
     credentials:
       draft.credentials && (draft.credentials.username || draft.credentials.password || draft.credentials.notes)
@@ -161,6 +193,10 @@ export function bugFromDraft(draft: Draft, existing: Bug[], reporter: Reporter, 
     // trim start becomes a playback offset instead.
     rrweb: draft.rrweb,
     rrwebFileId: draft.rrwebFileId,
+    videoFileId: draft.videoFileId,
+    // Shots keep their own `t`; they are evidence about a moment, not part of the event stream,
+    // so trimming does not discard them.
+    shots: draft.shots,
     rrwebOffset: draft.rrweb || draft.rrwebFileId ? t0 : undefined,
   };
 }

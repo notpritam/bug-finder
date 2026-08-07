@@ -12,7 +12,7 @@ import {
 } from "react-router-dom";
 import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
 import { USERS } from "@/lib/data";
-import { ANONYMOUS, listAccountUsers, loadSession, signOut, type AuthUser } from "@/lib/auth";
+import { ANONYMOUS, isAdmin, listAccountUsers, loadSession, signOut, type AuthUser } from "@/lib/auth";
 import {
   bugFromDraft,
   draftFromExtension,
@@ -20,6 +20,7 @@ import {
   loadSubmittedBugs,
   persistDraft,
   persistSubmittedBug,
+  removeBug,
   removeDraft,
 } from "@/lib/drafts";
 import { uploadJson } from "@/lib/storage-api";
@@ -38,11 +39,11 @@ import { listInitiatives, type Initiative } from "@/lib/initiatives";
 const DemoCapture = lazy(() => import("@/components/drafts/DemoCapture").then((m) => ({ default: m.DemoCapture })));
 
 const VIEW_TO_PATH: Record<SidebarView, string> = {
-  all: "/bugs",
-  open: "/bugs/open",
-  in_progress: "/bugs/in-progress",
-  resolved: "/bugs/resolved",
-  mine: "/bugs/mine",
+  all: "/sessions",
+  open: "/sessions/open",
+  in_progress: "/sessions/in-progress",
+  resolved: "/sessions/resolved",
+  mine: "/sessions/mine",
   drafts: "/drafts",
   initiatives: "/initiatives",
   insights: "/insights",
@@ -75,6 +76,26 @@ function Shell({
   const refreshInitiatives = async () => {
     const list = await listInitiatives().catch(() => [] as Initiative[]);
     setInitiatives(list);
+    announceInitiatives(list);
+  };
+
+  /** Push the live initiatives at the extension bridge. Kept separate from the fetch so a
+   *  bridge that loaded after us can ask for them again without a round trip to the server. */
+  const initiativesRef = useRef<Initiative[]>([]);
+  const announceInitiatives = (list: Initiative[]) => {
+    initiativesRef.current = list;
+    // Mirror the live ones to the extension bridge. The extension deliberately never calls our
+    // REST API, so anything it needs to offer at capture time has to be pushed to it.
+    window.postMessage(
+      {
+        source: "bugfinder-dashboard",
+        type: "initiatives-sync",
+        initiatives: list
+          .filter((i) => i.status === "in_qa")
+          .map((i) => ({ id: i.id, name: i.name, tags: i.tags ?? [] })),
+      },
+      "*",
+    );
   };
   useEffect(() => {
     void refreshInitiatives();
@@ -118,16 +139,94 @@ function Shell({
             ? prev.map((b) => (b.id === msg.bug.id ? msg.bug : b))
             : [msg.bug, ...prev],
         );
+      } else if (msg.kind === "bug-remove") {
+        setBugs((prev) => prev.filter((b) => b.id !== msg.id));
       }
     });
   }, []);
 
+  /** Points at submitDraft, which is defined further down — see the note there. */
+  const submitRef = useRef<((draft: Draft) => Promise<Bug>) | null>(null);
+
   // Captures arriving from the extension bridge become drafts (owned by you) and open for review.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (e.source !== window || e.data?.source !== "bugfinder-extension" || e.data.type !== "draft") return;
-      const incoming = draftFromExtension(e.data.draft as Record<string, unknown>, user ?? undefined);
-      window.postMessage({ source: "bugfinder-dashboard", type: "draft-received" }, "*");
+      if (e.source !== window || e.data?.source !== "bugfinder-extension") return;
+
+      // A bridge that just loaded is asking what we have; it may have missed the announcement.
+      if (e.data.type === "request-sync") {
+        announceInitiatives(initiativesRef.current);
+        return;
+      }
+
+      // A recording that finished uploading after its report was already filed. The extension
+      // never waits on the upload, so the pixel replay is attached here, after the fact.
+      if (e.data.type === "draft-patch") {
+        const patch = e.data.patch as {
+          id: string;
+          rrwebFileId?: string;
+          rrweb?: unknown[];
+          videoFileId?: string;
+          shots?: { id: string; t: number; fileId?: string; savedAs?: string }[];
+        };
+        window.postMessage({ source: "bugfinder-dashboard", type: "draft-patch-received", id: patch.id }, "*");
+        const attach = <
+          T extends {
+            rrweb?: unknown[];
+            rrwebFileId?: string;
+            videoFileId?: string;
+            shots?: { id: string; t: number; fileId?: string; savedAs?: string }[];
+          },
+        >(
+          row: T,
+        ): T => ({
+          ...row,
+          rrwebFileId: patch.rrwebFileId ?? row.rrwebFileId,
+          rrweb: patch.rrweb ?? row.rrweb,
+          videoFileId: patch.videoFileId ?? row.videoFileId,
+          // Shots arrive one at a time as each upload lands — merge by id, never replace.
+          shots: patch.shots
+            ? [
+                ...(row.shots ?? []).filter((s) => !patch.shots!.some((p) => p.id === s.id)),
+                ...patch.shots,
+              ].sort((a, b) => a.t - b.t)
+            : row.shots,
+        });
+        setDrafts((prev) =>
+          prev.map((d) => {
+            if (d.id !== patch.id) return d;
+            const next = attach(d);
+            persistDraft(next);
+            return next;
+          }),
+        );
+        setBugs((prev) =>
+          prev.map((b) => {
+            if (b.draftId !== patch.id) return b;
+            const next = attach(b);
+            persistSubmittedBug(next);
+            return next;
+          }),
+        );
+        return;
+      }
+
+      if (e.data.type !== "draft") return;
+      const payload = e.data.draft as Record<string, unknown>;
+      const incoming = draftFromExtension(payload, user ?? undefined);
+      window.postMessage({ source: "bugfinder-dashboard", type: "draft-received", id: incoming.id }, "*");
+
+      // The side panel already collected the report, so file it on arrival and hand the bug
+      // id straight back for the panel to show.
+      if (payload.autoSubmit) {
+        void submitRef.current?.(incoming).then((bug) => {
+          window.postMessage(
+            { source: "bugfinder-dashboard", type: "draft-filed", id: incoming.id, humanId: bug.humanId },
+            "*",
+          );
+        });
+        return;
+      }
       setDrafts((prev) => {
         if (prev.some((d) => d.id === incoming.id)) return prev;
         persistDraft(incoming);
@@ -204,6 +303,50 @@ function Shell({
     navigate("/drafts");
   };
 
+  /** Admin-only bulk delete. Removes each bug from IndexedDB (what the UI reads) and from the
+   *  backend snapshot (what agents read); other tabs follow via the sync channel. */
+  const deleteBugs = (ids: string[]) => {
+    const doomed = bugs.filter((b) => ids.includes(b.id));
+    if (!doomed.length) return;
+    for (const bug of doomed) removeBug(bug);
+    setBugs((prev) => prev.filter((b) => !ids.includes(b.id)));
+  };
+
+  /** Free-text edits to a filed bug. Any signed-in user may make them — a bug report is a
+   *  shared document, and gatekeeping it just means wrong titles stay wrong. Each changed
+   *  field becomes its own history entry holding the old and new value, so "who edited what"
+   *  is answerable after the fact rather than implied. */
+  const editBug = (id: string, patch: Partial<Bug>) => {
+    setBugs((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const at = Date.now();
+        const actor = user?.name ?? "Anonymous";
+        const events = [...b.events];
+        const record = (field: string, from: string, to: string) => {
+          if (from.trim() === to.trim()) return; // a no-op edit is not history
+          events.push({
+            id: `e-${at.toString(36)}-${field}`,
+            actor,
+            kind: "edited",
+            detail: `edited the ${field}`,
+            at,
+            field,
+            from,
+            to,
+          });
+        };
+        if (patch.title !== undefined) record("title", b.title, patch.title);
+        if (patch.description !== undefined) record("description", b.description, patch.description);
+        if (patch.tags !== undefined) record("tags", b.tags.join(", "), patch.tags.join(", "));
+        if (events.length === b.events.length) return b;
+        const next: Bug = { ...b, ...patch, updatedAt: at, events };
+        persistSubmittedBug(next);
+        return next;
+      }),
+    );
+  };
+
   const submitDraft = async (draft: Draft) => {
     // Recordings live in the storage service; the bug row keeps only the file id. If the
     // upload fails (offline, service down) the events stay inline — nothing is lost.
@@ -222,11 +365,15 @@ function Shell({
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
     // whose not-found redirect would win the race. Guests can't view bugs, so they land
     // back on Drafts with a filed confirmation instead.
-    if (user) navigate(`/bug/${bug.humanId}`, { replace: true });
+    if (user) navigate(`/session/${bug.humanId}`, { replace: true });
     else navigate(`/drafts?submitted=${bug.humanId}`, { replace: true });
     removeDraft(draft.id);
     setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    return bug;
   };
+  // The extension bridge files auto-submitted captures through this, and the effect above is
+  // declared first — a ref keeps it pointed at the current closure instead of a stale one.
+  submitRef.current = submitDraft;
 
   return (
     <div className="flex h-full">
@@ -244,15 +391,29 @@ function Shell({
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <Routes>
-          <Route path="/" element={<Navigate to={user ? "/bugs" : "/drafts"} replace />} />
+          <Route path="/" element={<Navigate to={user ? "/sessions" : "/drafts"} replace />} />
+          {/* The paths used to be /bugs and /bug/:id. Links have already been shared, and a
+              shared link that 404s is worse than a redirect that lives forever. */}
+          <Route path="/bugs/:view?" element={<LegacyRedirect to="/sessions" />} />
+          <Route path="/bug/:humanId" element={<LegacyRedirect to="/session" />} />
           <Route
-            path="/bugs/:view?"
+            path="/sessions/:view?"
             element={
-              user ? <BugsRoute bugs={bugs} me={user} onStatusChange={changeStatus} /> : <Navigate to="/auth" replace />
+              user ? (
+                <BugsRoute
+                  bugs={bugs}
+                  me={user}
+                  onStatusChange={changeStatus}
+                  canDelete={isAdmin(user)}
+                  onDelete={deleteBugs}
+                />
+              ) : (
+                <Navigate to="/auth" replace />
+              )
             }
           />
           <Route
-            path="/bug/:humanId"
+            path="/session/:humanId"
             element={
               !user ? (
                 <Navigate to="/auth" replace />
@@ -266,6 +427,7 @@ function Shell({
                 onSeverityChange={changeSeverity}
                 onAssigneeChange={changeAssignee}
                 onComment={addComment}
+                onEdit={editBug}
               />
               )
             }
@@ -322,7 +484,7 @@ function Shell({
             path="/auth"
             element={
               user ? (
-                <Navigate to="/bugs" replace />
+                <Navigate to="/sessions" replace />
               ) : (
                 <AuthGate onAuthed={onAuthed} />
               )
@@ -336,7 +498,7 @@ function Shell({
               </Suspense>
             }
           />
-          <Route path="*" element={<Navigate to="/bugs" replace />} />
+          <Route path="*" element={<Navigate to="/sessions" replace />} />
         </Routes>
       </main>
     </div>
@@ -365,19 +527,32 @@ function InitiativeRoute({
   return <InitiativeDetail initiative={initiative} bugs={bugs} user={user} people={people} onRefresh={onRefresh} />;
 }
 
+/** Carries an old /bugs or /bug/:id URL to its /sessions equivalent, query string intact so a
+ *  shared `?t=4.6` deep link still lands on the right moment. */
+function LegacyRedirect({ to }: { to: string }) {
+  const { view, humanId } = useParams();
+  const location = useLocation();
+  const tail = humanId ?? view ?? "";
+  return <Navigate to={`${to}${tail ? `/${tail}` : ""}${location.search}`} replace />;
+}
+
 function BugsRoute({
   bugs,
   me,
   onStatusChange,
+  canDelete,
+  onDelete,
 }: {
   bugs: Bug[];
   me: Reporter | null;
   onStatusChange: (id: string, status: BugStatus) => void;
+  canDelete: boolean;
+  onDelete: (ids: string[]) => void;
 }) {
   const navigate = useNavigate();
   const { view } = useParams();
   const sidebarView: SidebarView = PATH_TO_VIEW[view ?? ""] ?? "all";
-  if (view && !PATH_TO_VIEW[view]) return <Navigate to="/bugs" replace />;
+  if (view && !PATH_TO_VIEW[view]) return <Navigate to="/sessions" replace />;
   return (
     <BugsPage
       bugs={bugs}
@@ -385,9 +560,11 @@ function BugsRoute({
       view={sidebarView}
       onOpenBug={(id) => {
         const bug = bugs.find((b) => b.id === id);
-        if (bug) navigate(`/bug/${bug.humanId}`);
+        if (bug) navigate(`/session/${bug.humanId}`);
       }}
       onStatusChange={onStatusChange}
+      canDelete={canDelete}
+      onDelete={onDelete}
     />
   );
 }
@@ -401,6 +578,7 @@ function BugRoute({
   onSeverityChange,
   onAssigneeChange,
   onComment,
+  onEdit,
 }: {
   hydrated: boolean;
   bugs: Bug[];
@@ -410,14 +588,18 @@ function BugRoute({
   onSeverityChange: (id: string, severity: BugSeverity) => void;
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
   onComment: (id: string, body: string) => void;
+  onEdit: (id: string, patch: Partial<Bug>) => void;
 }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { humanId } = useParams();
   const bug = bugs.find((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
   if (!bug && !hydrated) return null;
-  if (!bug) return <Navigate to="/bugs" replace />;
-  const back = () => (location.key !== "default" ? navigate(-1) : navigate("/bugs"));
+  if (!bug) return <Navigate to="/sessions" replace />;
+  // Always the list, never history. The control says "All sessions", so that is where it goes;
+  // browser Back already covers "wherever I came from". The old history check also misfired —
+  // the player stamps `?t=` with a replace, which mints a fresh location key, so a directly
+  // opened bug looked like it had somewhere to go back to and the button did nothing.
+  const back = () => navigate("/sessions");
   const host = (u: string) => {
     try {
       return new URL(u).host;
@@ -443,6 +625,7 @@ function BugRoute({
       onSeverityChange={onSeverityChange}
       onAssigneeChange={onAssigneeChange}
       onComment={onComment}
+      onEdit={onEdit}
     />
   );
 }
@@ -494,7 +677,7 @@ function AuthGate({ onAuthed }: { onAuthed: (u: AuthUser) => void }) {
     <AuthScreen
       onAuthed={(u) => {
         onAuthed(u);
-        navigate("/bugs", { replace: true });
+        navigate("/sessions", { replace: true });
       }}
       onSkip={() => navigate("/drafts", { replace: true })}
     />

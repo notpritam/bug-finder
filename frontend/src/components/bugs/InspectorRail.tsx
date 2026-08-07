@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Crosshair,
   Globe,
+  Image as ImageIcon,
   Info,
   Maximize2,
   Minimize2,
@@ -18,17 +19,19 @@ import {
   X,
 } from "lucide-react";
 import type { Bug, ConsoleEntry, NetEntry } from "@/lib/types";
+import { storageDownloadUrl } from "@/lib/storage-api";
 import { cn, formatBytes, formatDuration, formatOffset, pathOf, shortName } from "@/lib/utils";
 import { JsonTree, JsonView, TextView, tryParseJson } from "@/components/common/JsonView";
 import type { ReplayClock } from "@/components/replay/useReplayClock";
 
-type Tab = "activity" | "console" | "network" | "elements" | "info";
+type Tab = "activity" | "console" | "network" | "elements" | "shots" | "info";
 
 const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
   { key: "activity", label: "Activity", icon: <Activity className="size-3.5" /> },
   { key: "console", label: "Console", icon: <Terminal className="size-3.5" /> },
   { key: "network", label: "Network", icon: <Globe className="size-3.5" /> },
   { key: "elements", label: "Elements", icon: <Crosshair className="size-3.5" /> },
+  { key: "shots", label: "Shots", icon: <ImageIcon className="size-3.5" /> },
   { key: "info", label: "Info", icon: <Info className="size-3.5" /> },
 ];
 
@@ -984,11 +987,58 @@ export function InspectorRail({
         {tab === "activity" && <ActivityList bug={bug} clock={clock} />}
         {tab === "console" && <ConsoleList bug={bug} clock={clock} />}
         {tab === "network" && <NetworkList bug={bug} clock={clock} />}
+        {tab === "shots" && <ShotList bug={bug} clock={clock} />}
         {tab === "elements" && (
           <ElementsList bug={bug} clock={clock} selectedPick={selectedPick} onSelectPick={onSelectPick} />
         )}
         {tab === "info" && <InfoPanel bug={bug} />}
       </div>
+    </div>
+  );
+}
+
+/** The reporter's annotated screenshots. Each one is a moment they thought was worth drawing
+ *  on, so clicking a shot seeks the replay to it rather than just enlarging a picture. */
+function ShotList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
+  const shots = bug.shots ?? [];
+  if (!shots.length) {
+    return (
+      <div className="p-4 text-[12px] text-muted-foreground">
+        No screenshots on this report. The extension's ⊙ Screenshot button captures the page and
+        lets the reporter draw on it.
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3 p-3">
+      {shots.map((shot) => (
+        <figure key={shot.id} className="overflow-hidden rounded-lg border border-border bg-card">
+          {shot.fileId ? (
+            <button
+              type="button"
+              onClick={() => clock.seek(Math.max(0, shot.t))}
+              className="block w-full"
+              title={`Jump the replay to ${formatOffset(Math.max(0, shot.t))}`}
+            >
+              <img
+                src={storageDownloadUrl(shot.fileId)}
+                alt={shot.note ?? `Screenshot at ${formatOffset(Math.max(0, shot.t))}`}
+                className="w-full"
+                loading="lazy"
+              />
+            </button>
+          ) : (
+            <div className="grid h-24 place-items-center text-[11px] text-muted-foreground">
+              Still uploading…
+            </div>
+          )}
+          <figcaption className="flex items-center gap-2 border-t border-border px-2.5 py-1.5 text-[11px] text-muted-foreground">
+            <span className="font-mono">{formatOffset(Math.max(0, shot.t))}</span>
+            {shot.selector ? <span className="truncate font-mono">{shot.selector}</span> : null}
+            {shot.note ? <span className="truncate">{shot.note}</span> : null}
+          </figcaption>
+        </figure>
+      ))}
     </div>
   );
 }

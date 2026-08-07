@@ -24,7 +24,9 @@ import { UserAvatar } from "@/components/common/bits";
 export type SidebarView = "all" | "open" | "in_progress" | "resolved" | "mine" | "drafts" | "initiatives" | "insights";
 
 const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[], meId: string) => number }[] = [
-  { key: "all", label: "All bugs", icon: <Inbox className="size-[17px]" />, count: (b) => b.length },
+  // "Sessions", not "bugs": a capture is a recorded session, and plenty are worth keeping
+  // without being defects — regressions, questions, things to show someone.
+  { key: "all", label: "All sessions", icon: <Inbox className="size-[17px]" />, count: (b) => b.length },
   { key: "open", label: "Open", icon: <CircleDot className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "open").length },
   { key: "in_progress", label: "In progress", icon: <Loader2 className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "in_progress").length },
   { key: "resolved", label: "Resolved", icon: <ShieldCheck className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "resolved").length },
@@ -90,7 +92,7 @@ export function Sidebar({
         {user && (
           <>
             {!collapsed && (
-              <p className="px-2 pb-1.5 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+              <p className="px-2 pb-1.5 pt-1 text-[12px] font-normal text-muted-foreground">
                 Views
               </p>
             )}
@@ -109,7 +111,7 @@ export function Sidebar({
         )}
 
         {!collapsed && (
-          <p className="px-2 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+          <p className="px-2 pb-1.5 pt-4 text-[12px] font-normal text-muted-foreground">
             Inbox
           </p>
         )}
@@ -126,7 +128,7 @@ export function Sidebar({
         {user && (
           <>
             {!collapsed && (
-              <p className="px-2 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+              <p className="px-2 pb-1.5 pt-4 text-[12px] font-normal text-muted-foreground">
                 Workspace
               </p>
             )}
