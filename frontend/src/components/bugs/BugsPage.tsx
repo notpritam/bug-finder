@@ -389,11 +389,15 @@ export function BugsPage({
                     )}
                   </span>
                 </button>
-                {isUnsynced(bug) && (
-                  <SyncBadge bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />
-                )}
-                <InlineStatus status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
-                <CopyLink path={`/session/${bug.humanId}`} label={bug.title} />
+                {/* On a card these are stretched children of a column, so each would take a full
+                    row of its own. Keep them on one line there; `contents` leaves the list untouched. */}
+                <span className={cn(grid ? "flex items-center gap-2" : "contents")}>
+                  {isUnsynced(bug) && (
+                    <SyncBadge bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />
+                  )}
+                  <InlineStatus status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
+                  <CopyLink path={`/session/${bug.humanId}`} label={bug.title} />
+                </span>
               </li>
             );
           })}
