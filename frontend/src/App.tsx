@@ -860,10 +860,23 @@ function BugRoute({
   // before the dedup landed), the shared link opens the surviving row instead of a dead one.
   const matches = bugs.filter((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
   const bug = matches.length > 1 ? matches.reduce((a, b) => (b.createdAt > a.createdAt ? b : a)) : matches[0];
-  // A session filed on someone else's machine reaches this browser through the shared list,
-  // which carries no recording, network or console. Pull the full row the first time it is opened.
+  // A session filed on someone else's machine reaches this browser through the shared list, which
+  // carries no recording, network or console. Pull the full row the first time it is opened.
+  //
+  // Test the LENGTH, not the value. The list normaliser gives every capture array a `?? []` floor
+  // so the list cannot crash on a light row — and an empty array is truthy, so `if (bug.network)`
+  // read "evidence already loaded" for exactly the rows that had none. Every session this browser
+  // had not filed itself opened with blank Network and Console panels, permanently, while the
+  // server held the lot.
+  const fetched = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!bug || bug.rrweb || bug.network || bug.evidenceFileId === undefined) return;
+    if (!bug || fetched.current.has(bug.humanId)) return;
+    const hasEvidence =
+      (bug.network?.length ?? 0) > 0 || (bug.console?.length ?? 0) > 0 || (bug.rrweb?.length ?? 0) > 0;
+    if (hasEvidence) return;
+    // Remember the attempt, not just the success: a capture that genuinely recorded nothing would
+    // otherwise re-fetch on every render for the rest of the session.
+    fetched.current.add(bug.humanId);
     let live = true;
     void fetchBug(bug.humanId).then((full) => {
       if (live && full) onHydrateBug(full);
