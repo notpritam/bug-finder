@@ -15,7 +15,7 @@ import {
   UserAvatar,
 } from "@/components/common/bits";
 import { isUnsynced, SyncBadge } from "@/components/common/SyncBadge";
-import { SessionFilters, type FilterValues } from "./SessionFilters";
+import { LayoutToggle, SessionFilters, type LayoutMode } from "./SessionFilters";
 
 type StatusFilter = BugStatus | "all";
 type SeverityFilter = BugSeverity | "all";
@@ -73,7 +73,16 @@ export function BugsPage({
   // Tags are how a session gets associated with an initiative, so this is an exact match —
   // unlike the search box, where "auth" would also hit a title mentioning authentication.
   const tagFilter = params.get("tag") ?? "all";
-  const setTagFilter = (v: string) => setParam("tag", v);
+  // A personal preference, so it lives in localStorage rather than the URL — in the URL it would
+  // ride along on a shared link and override whatever the recipient had chosen.
+  const [layout, setLayout] = useState<LayoutMode>(
+    () => (localStorage.getItem("bf.sessions-layout") as LayoutMode) || "list",
+  );
+  const grid = layout === "grid";
+  const setLayoutMode = (v: LayoutMode) => {
+    setLayout(v);
+    localStorage.setItem("bf.sessions-layout", v);
+  };
   const [activeIndex, setActiveIndex] = useState(-1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -231,19 +240,24 @@ export function BugsPage({
               /
             </kbd>
           </div>
-        </div>
-
-        <div className="mb-4">
           <SessionFilters
-            values={{ status: statusFilter, severity: severityFilter, reporter: reporterFilter, since: sinceFilter } as FilterValues}
+            values={{
+              status: statusFilter,
+              severity: severityFilter,
+              reporter: reporterFilter,
+              since: sinceFilter,
+              tag: tagFilter,
+            }}
             showStatus={statusChipsVisible}
             reporters={reporters}
+            tags={tagCounts.map(([tag, count]) => ({ tag, count }))}
             onChange={(key, value) => {
               setParam(key, value);
               setActiveIndex(-1);
             }}
             onClear={clearFilters}
           />
+          <LayoutToggle value={layout} onChange={setLayoutMode} />
         </div>
 
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -273,41 +287,7 @@ export function BugsPage({
           </span>
         </div>
 
-        {tagCounts.length > 0 ? (
-          <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 text-[11px] font-medium text-muted-foreground">Tag</span>
-            <button
-              type="button"
-              onClick={() => setTagFilter("all")}
-              className={cn(
-                "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                tagFilter === "all"
-                  ? "border-primary/50 bg-primary/10 text-foreground"
-                  : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground",
-              )}
-            >
-              Any
-            </button>
-            {tagCounts.map(([tag, count]) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => setTagFilter(tagFilter === tag ? "all" : tag)}
-                title={`Only sessions tagged "${tag}"`}
-                className={cn(
-                  "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                  tagFilter === tag
-                    ? "border-primary/50 bg-primary/10 text-foreground"
-                    : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground",
-                )}
-              >
-                {tag} <span className="opacity-55">{count}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <ul className="flex flex-col gap-1.5">
+        <ul className={cn(grid ? "grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3" : "flex flex-col gap-1.5")}>
           {canDelete && selected.size > 0 ? (
             <li className="mb-1 flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-[12px]">
               <span className="font-semibold">{selected.size} selected</span>
@@ -345,7 +325,8 @@ export function BugsPage({
                 key={bug.id}
                 ref={i === activeIndex ? activeRowRef : null}
                 className={cn(
-                  "card-rise group flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors",
+                  "card-rise group flex gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors",
+                  grid ? "flex-col items-stretch" : "items-center",
                   i === activeIndex
                     ? "border-primary/60 shadow-[inset_3px_0_0_0_var(--primary)] ring-1 ring-primary/30"
                     : "border-border/60 hover:border-primary/40 hover:bg-accent/40",
@@ -365,10 +346,15 @@ export function BugsPage({
                 <button
                   type="button"
                   onClick={() => onOpenBug(bug.id)}
-                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className={cn(
+                    "flex min-w-0 flex-1 cursor-pointer gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                    grid ? "flex-col items-start" : "items-center",
+                  )}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-foreground">{bug.title}</p>
+                    <p className={cn("text-[13px] font-semibold text-foreground", grid ? "line-clamp-2" : "truncate")}>
+                      {bug.title}
+                    </p>
                     <p className="mt-0.5 flex items-center gap-2 text-[11.5px] text-muted-foreground">
                       <span className="truncate">{hostOf(bug.pageUrl)}</span>
                       <span className="inline-flex shrink-0 items-center gap-1">
@@ -384,14 +370,24 @@ export function BugsPage({
                     </p>
                     {bug.tags.length > 0 && <BugTagChips tags={bug.tags} className="mt-1" />}
                   </div>
-                  <BugSeverityPill severity={bug.severity} />
-                  <span className="hidden w-8 shrink-0 justify-center sm:flex">
-                    <UserAvatar name={bug.reporter.name} seed={bug.reporter.id} size={24} />
+                  <span className={cn(grid ? "mt-auto flex w-full items-center gap-2 pt-1" : "contents")}>
+                    <BugSeverityPill severity={bug.severity} />
+                    <span className={cn("w-8 shrink-0 justify-center", grid ? "flex" : "hidden sm:flex")}>
+                      <UserAvatar name={bug.reporter.name} seed={bug.reporter.id} size={24} />
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-[11px] text-muted-foreground",
+                        grid ? "ml-auto" : "hidden w-14 text-right md:block",
+                      )}
+                      title={bug.reporter.name}
+                    >
+                      {relativeTime(bug.createdAt)}
+                    </span>
+                    {!grid && (
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
+                    )}
                   </span>
-                  <span className="hidden w-14 shrink-0 text-right text-[11px] text-muted-foreground md:block">
-                    {relativeTime(bug.createdAt)}
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
                 </button>
                 {isUnsynced(bug) && (
                   <SyncBadge bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />

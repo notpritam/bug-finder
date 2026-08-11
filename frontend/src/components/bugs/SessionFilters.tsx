@@ -2,7 +2,7 @@
 // ABOUTME: and severity chips that cost a third of the screen before a single session was visible.
 // ABOUTME: Everything folds into a popover; only the filters actually set stay on screen as pills.
 import { useEffect, useRef, useState } from "react";
-import { Check, ListFilter, X } from "lucide-react";
+import { Check, LayoutGrid, List, ListFilter, X } from "lucide-react";
 import type { Reporter } from "@/lib/types";
 import { BUG_SEVERITY_ORDER, BUG_STATUS_META, BUG_STATUS_ORDER } from "@/components/common/bits";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,10 @@ export interface FilterValues {
   severity: string;
   reporter: string;
   since: string;
+  tag: string;
 }
+
+export type LayoutMode = "list" | "grid";
 
 const CAP = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -29,6 +32,7 @@ export function SessionFilters({
   values,
   showStatus,
   reporters,
+  tags,
   onChange,
   onClear,
 }: {
@@ -38,6 +42,9 @@ export function SessionFilters({
   /** Everyone who actually reported something in the current scope, so the list can never offer
    *  a name that would return nothing. */
   reporters: Reporter[];
+  /** Tags present in scope, most-used first, with their counts. Same rule as reporters: only
+   *  offer what is actually there. */
+  tags: { tag: string; count: number }[];
   onChange: (key: keyof FilterValues, value: string) => void;
   onClear: () => void;
 }) {
@@ -72,6 +79,10 @@ export function SessionFilters({
     { value: "all", label: "Anyone" },
     ...reporters.map((r) => ({ value: r.id, label: r.name })),
   ];
+  const tagOpts = [
+    { value: "all", label: "Any tag" },
+    ...tags.map((t) => ({ value: t.tag, label: `${t.tag} (${t.count})` })),
+  ];
 
   // Only what is actually set, so the row next to the button reads as "what am I looking at".
   const active: { key: keyof FilterValues; label: string }[] = [];
@@ -82,6 +93,7 @@ export function SessionFilters({
     active.push({ key: "reporter", label: reporters.find((r) => r.id === values.reporter)?.name ?? "Unknown reporter" });
   if (values.since !== "all")
     active.push({ key: "since", label: TIME_RANGES.find((t) => t.value === values.since)?.label ?? values.since });
+  if (values.tag !== "all") active.push({ key: "tag", label: `#${values.tag}` });
 
   return (
     <div className="flex flex-wrap items-center gap-1.5" ref={wrap}>
@@ -107,11 +119,14 @@ export function SessionFilters({
           )}
         </button>
 
+        {/* Anchored right, not left: this button sits at the end of the control row, so a
+            left-anchored panel runs off the edge of the window. */}
         {open && (
-          <div className="absolute left-0 top-full z-30 mt-1.5 w-60 rounded-xl border border-border/60 bg-popover p-1.5 shadow-lg">
+          <div className="absolute right-0 top-full z-30 mt-1.5 w-60 rounded-xl border border-border/60 bg-popover p-1.5 shadow-lg">
             {showStatus && <Group label="Status" value={values.status} options={statusOpts} onPick={(v) => onChange("status", v)} />}
             <Group label="Severity" value={values.severity} options={severityOpts} onPick={(v) => onChange("severity", v)} />
             <Group label="Reported by" value={values.reporter} options={reporterOpts} onPick={(v) => onChange("reporter", v)} />
+            {tags.length > 0 && <Group label="Tag" value={values.tag} options={tagOpts} onPick={(v) => onChange("tag", v)} />}
             <Group
               label="Time"
               value={values.since}
@@ -183,5 +198,36 @@ function Group({
         ))}
       </div>
     </div>
+  );
+}
+
+/** List or cards. A preference, not a filter, so it lives beside the filter rather than inside it —
+ *  and it persists per person instead of riding in the URL, where it would follow a shared link and
+ *  override the recipient's own choice. */
+export function LayoutToggle({ value, onChange }: { value: LayoutMode; onChange: (v: LayoutMode) => void }) {
+  const opts: { mode: LayoutMode; icon: typeof List; label: string }[] = [
+    { mode: "list", icon: List, label: "List view" },
+    { mode: "grid", icon: LayoutGrid, label: "Card view" },
+  ];
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-card p-0.5">
+      {opts.map(({ mode, icon: Icon, label }) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onChange(mode)}
+          title={label}
+          aria-label={label}
+          aria-pressed={value === mode}
+          data-testid={`sessions-layout-${mode}`}
+          className={cn(
+            "grid size-[26px] place-items-center rounded-md transition-colors",
+            value === mode ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      ))}
+    </span>
   );
 }

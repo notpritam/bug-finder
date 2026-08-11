@@ -201,7 +201,9 @@ export function InitiativeDetail({
                 <li key={b.id} className="flex items-center gap-1 border-b border-border/50 pr-2 last:border-b-0">
                   <button
                     type="button"
-                    onClick={() => navigate(`/session/${b.humanId}`)}
+                    // Carry where this was opened from, so Back returns to this initiative rather than
+                    // dumping the reader into the full session list they never came from.
+                    onClick={() => navigate(`/session/${b.humanId}?from=${encodeURIComponent(location.pathname)}`)}
                     className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50"
                     data-testid={`initiative-bug-row-${b.humanId}`}
                   >

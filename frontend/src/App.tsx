@@ -10,6 +10,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
 import { ANONYMOUS, isAdmin, listAccountUsers, loadSession, signOut, verifySession, type AuthUser } from "@/lib/auth";
@@ -854,6 +855,7 @@ function BugRoute({
 }) {
   const navigate = useNavigate();
   const { humanId } = useParams();
+  const [search] = useSearchParams();
   // Resolve by humanId, newest first — if duplicate rows ever coexist (a double-submit from
   // before the dedup landed), the shared link opens the surviving row instead of a dead one.
   const matches = bugs.filter((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
@@ -872,11 +874,14 @@ function BugRoute({
   }, [bug?.humanId]);
   if (!bug && !hydrated) return null;
   if (!bug) return <Navigate to="/sessions" replace />;
-  // Always the list, never history. The control says "All sessions", so that is where it goes;
-  // browser Back already covers "wherever I came from". The old history check also misfired —
-  // the player stamps `?t=` with a replace, which mints a fresh location key, so a directly
-  // opened bug looked like it had somewhere to go back to and the button did nothing.
-  const back = () => navigate("/sessions");
+  // Back returns to wherever this session was opened from when the opener said so — an initiative,
+  // most often — and to the list otherwise. Not browser history: the player stamps `?t=` with a
+  // replace, which mints a fresh location key, so a directly opened session looks like it has
+  // somewhere to go back to when it does not. Relative paths only, so a crafted link cannot turn
+  // Back into an off-site redirect.
+  const from = search.get("from");
+  const backTo = from && from.startsWith("/") && !from.startsWith("//") ? from : "/sessions";
+  const back = () => navigate(backTo);
   const host = (u: string) => {
     try {
       return new URL(u).host;
