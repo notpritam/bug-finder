@@ -29,7 +29,7 @@ import {
   type SyncResult,
 } from "@/lib/drafts";
 import { uploadJson } from "@/lib/storage-api";
-import { allocateHumanId, fetchBug, listBugs, patchBug } from "@/lib/bugs-api";
+import { allocateHumanId, fetchBug, listBugs, patchBug, postComment } from "@/lib/bugs-api";
 import { onSync } from "@/lib/sync";
 import { Sidebar, type SidebarView } from "@/components/shell/Sidebar";
 import { AuthScreen } from "@/components/auth/AuthScreen";
@@ -413,7 +413,11 @@ function Shell({
         // one session overwrite each other.
         void storeBugLocal(next);
         const shared = Object.fromEntries(
-          Object.entries(patch).filter(([k]) => SERVER_EDITABLE.has(k)),
+          Object.entries(patch)
+            .filter(([k]) => SERVER_EDITABLE.has(k))
+            // undefined disappears in JSON, which would leave the old value standing. Clearing a
+            // field — unassigned, no initiative — has to travel as an explicit null.
+            .map(([k, v]) => [k, v === undefined ? null : v]),
         );
         if (Object.keys(shared).length) void patchBug(next.humanId, shared);
         return next;
@@ -427,7 +431,30 @@ function Shell({
     amendBug(id, { severity }, `set severity to ${severity}`);
   const changeAssignee = (id: string, assignee: Reporter | null) =>
     amendBug(id, { assignee }, assignee ? `assigned to ${assignee.name}` : "unassigned");
-  const addComment = (id: string, body: string) => amendBug(id, {}, body);
+  const addComment = (id: string, body: string) => {
+    amendBug(id, {}, body);
+    // The thread is shared. A comment that reaches only this browser's history is invisible to the
+    // developer it was written for, which was the entire point of writing it.
+    const bug = bugsRef.current.find((b) => b.id === id);
+    if (bug) void postComment(bug.humanId, body);
+  };
+
+  /** Move a session to an initiative. Id and name travel together — the id is what grouping keys
+   *  off, the name is what every list and agent summary renders — and the category follows, since a
+   *  session on an initiative is QA work and one without it is a production report. */
+  const changeInitiative = (id: string, initiative: Initiative | null) =>
+    amendBug(
+      id,
+      {
+        initiativeId: initiative?.id,
+        initiative: initiative?.name,
+        category: initiative ? "initiative" : "production",
+      },
+      initiative ? `moved to ${initiative.name}` : "removed from its initiative",
+    );
+
+  const changeTags = (id: string, tags: string[]) =>
+    amendBug(id, { tags }, `tags → ${tags.join(", ") || "none"}`);
 
   const updateDraft = (draft: Draft) => {
     persistDraft(draft);
@@ -624,6 +651,9 @@ function Shell({
                 onSeverityChange={changeSeverity}
                 onAssigneeChange={changeAssignee}
                 onComment={addComment}
+                initiatives={initiatives}
+                onInitiativeChange={changeInitiative}
+                onTagsChange={changeTags}
                 onEdit={editBug}
                 onHydrateBug={hydrateBug}
                 onRetrySync={retrySync}
@@ -781,6 +811,9 @@ function BugRoute({
   onSeverityChange,
   onAssigneeChange,
   onComment,
+  initiatives,
+  onInitiativeChange,
+  onTagsChange,
   onEdit,
   onHydrateBug,
   onRetrySync,
@@ -793,6 +826,9 @@ function BugRoute({
   onSeverityChange: (id: string, severity: BugSeverity) => void;
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
   onComment: (id: string, body: string) => void;
+  initiatives: Initiative[];
+  onInitiativeChange: (id: string, initiative: Initiative | null) => void;
+  onTagsChange: (id: string, tags: string[]) => void;
   onEdit: (id: string, patch: Partial<Bug>) => void;
   onHydrateBug: (full: Bug) => void;
   onRetrySync: (id: string) => Promise<void>;
@@ -847,6 +883,9 @@ function BugRoute({
       onSeverityChange={onSeverityChange}
       onAssigneeChange={onAssigneeChange}
       onComment={onComment}
+      initiatives={initiatives}
+      onInitiativeChange={onInitiativeChange}
+      onTagsChange={onTagsChange}
       onEdit={onEdit}
       onRetrySync={onRetrySync}
     />

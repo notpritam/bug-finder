@@ -8,7 +8,6 @@ import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
 import { cn, formatDuration, hostOf, relativeTime } from "@/lib/utils";
 import {
-  BUG_SEVERITY_ORDER,
   BUG_STATUS_META,
   BUG_STATUS_ORDER,
   BugSeverityPill,
@@ -16,6 +15,7 @@ import {
   UserAvatar,
 } from "@/components/common/bits";
 import { isUnsynced, SyncBadge } from "@/components/common/SyncBadge";
+import { SessionFilters, type FilterValues } from "./SessionFilters";
 
 type StatusFilter = BugStatus | "all";
 type SeverityFilter = BugSeverity | "all";
@@ -52,6 +52,10 @@ export function BugsPage({
   const [params, setParams] = useSearchParams();
   const statusFilter = (params.get("status") as StatusFilter) ?? "all";
   const severityFilter = (params.get("severity") as SeverityFilter) ?? "all";
+  const reporterFilter = params.get("reporter") ?? "all";
+  // Days, not a timestamp: a shared link that said "since 3pm Tuesday" would mean something
+  // different every time it was opened.
+  const sinceFilter = params.get("since") ?? "all";
   const search = params.get("q") ?? "";
   const setParam = (key: string, value: string) => {
     setParams(
@@ -65,7 +69,6 @@ export function BugsPage({
     );
   };
   const setStatusFilter = (v: StatusFilter) => setParam("status", v);
-  const setSeverityFilter = (v: SeverityFilter) => setParam("severity", v);
   const setSearch = (v: string) => setParam("q", v);
   // Tags are how a session gets associated with an initiative, so this is an exact match —
   // unlike the search box, where "auth" would also hit a title mentioning authentication.
@@ -120,6 +123,14 @@ export function BugsPage({
   const effectiveStatus = statusChipsVisible ? statusFilter : "all";
 
   const query = search.trim().toLowerCase();
+  // Only people who have actually filed something here, so the menu can never offer a name that
+  // returns an empty list.
+  const reporters = useMemo(() => {
+    const seen = new Map<string, Reporter>();
+    for (const b of scoped) if (b.reporter?.id && !seen.has(b.reporter.id)) seen.set(b.reporter.id, b.reporter);
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [scoped]);
+  const cutoff = sinceFilter === "all" ? 0 : Date.now() - Number(sinceFilter) * 86_400_000;
   // Tags actually present in this scope, most-used first. Derived rather than hardcoded, so a
   // tag someone invents in the extension shows up here on its first use.
   const tagCounts = useMemo(() => {
@@ -134,6 +145,8 @@ export function BugsPage({
       scoped.filter(
         (b) =>
           (severityFilter === "all" || b.severity === severityFilter) &&
+          (reporterFilter === "all" || b.reporter?.id === reporterFilter) &&
+          (cutoff === 0 || b.createdAt >= cutoff) &&
           (tagFilter === "all" || b.tags.includes(tagFilter)) &&
           (query === "" ||
             b.title.toLowerCase().includes(query) ||
@@ -141,7 +154,7 @@ export function BugsPage({
             b.pageUrl.toLowerCase().includes(query) ||
             b.tags.some((t) => t.toLowerCase().includes(query))),
       ),
-    [scoped, severityFilter, tagFilter, query],
+    [scoped, severityFilter, reporterFilter, cutoff, tagFilter, query],
   );
   const visible = useMemo(
     () => preStatus.filter((b) => effectiveStatus === "all" || b.status === effectiveStatus),
@@ -154,7 +167,8 @@ export function BugsPage({
     return BUG_STATUS_ORDER.map((s) => ({ status: s, count: counts.get(s) ?? 0 })).filter((x) => x.count > 0);
   }, [preStatus]);
 
-  const filtersActive = effectiveStatus !== "all" || severityFilter !== "all" || query !== "";
+  const filtersActive =
+    effectiveStatus !== "all" || severityFilter !== "all" || reporterFilter !== "all" || sinceFilter !== "all" || query !== "";
   const clearFilters = () => setParams(new URLSearchParams(), { replace: true });
 
   useEffect(() => {
@@ -219,29 +233,16 @@ export function BugsPage({
           </div>
         </div>
 
-        <div className="mb-5 space-y-2">
-          {statusChipsVisible && (
-            <FilterChips
-              label="Status"
-              value={statusFilter}
-              options={[
-                { value: "all" as StatusFilter, label: "All" },
-                ...BUG_STATUS_ORDER.map((s) => ({ value: s as StatusFilter, label: BUG_STATUS_META[s].label })),
-              ]}
-              onChange={setStatusFilter}
-            />
-          )}
-          <FilterChips
-            label="Severity"
-            value={severityFilter}
-            options={[
-              { value: "all" as SeverityFilter, label: "All" },
-              ...BUG_SEVERITY_ORDER.map((s) => ({
-                value: s as SeverityFilter,
-                label: s.charAt(0).toUpperCase() + s.slice(1),
-              })),
-            ]}
-            onChange={setSeverityFilter}
+        <div className="mb-4">
+          <SessionFilters
+            values={{ status: statusFilter, severity: severityFilter, reporter: reporterFilter, since: sinceFilter } as FilterValues}
+            showStatus={statusChipsVisible}
+            reporters={reporters}
+            onChange={(key, value) => {
+              setParam(key, value);
+              setActiveIndex(-1);
+            }}
+            onClear={clearFilters}
           />
         </div>
 
@@ -440,39 +441,6 @@ export function BugsPage({
   );
 }
 
-function FilterChips<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 w-14 shrink-0 text-[11.5px] font-medium text-muted-foreground/70">{label}</span>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          aria-pressed={value === o.value}
-          className={cn(
-            "rounded-full px-2.5 py-1 text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-            value === o.value
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Native select styled as a chip — change status from the list without opening the bug. */
 function InlineStatus({ status, onChange }: { status: BugStatus; onChange: (s: BugStatus) => void }) {

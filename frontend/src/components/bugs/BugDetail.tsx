@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Bot, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
 import type { Bug, BugEvent, BugSeverity, BugStatus, Reporter } from "@/lib/types";
-import { ENV_META, type Env } from "@/lib/meta";
+import { ENV_META, PRESET_TAGS, type Env } from "@/lib/meta";
+import type { Initiative } from "@/lib/initiatives";
 import { agentShareUrl, fetchAgentComments, type AgentComment } from "@/lib/bugs-api";
 import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
 import {
@@ -19,17 +20,21 @@ import { useReplayClock } from "@/components/replay/useReplayClock";
 import { SyncBanner } from "@/components/common/SyncBadge";
 import { InspectorRail } from "./InspectorRail";
 import { EditableText } from "./EditableText";
+import { InitiativePicker, TagEditor } from "./SessionControls";
 
 export function BugDetail({
   bug,
   me,
   people,
   relatedBugs,
+  initiatives,
   onBack,
   onStatusChange,
   onSeverityChange,
   onAssigneeChange,
   onComment,
+  onInitiativeChange,
+  onTagsChange,
   onEdit,
   onRetrySync,
 }: {
@@ -39,11 +44,15 @@ export function BugDetail({
   people: Reporter[];
   /** Bugs sharing a tag or host with this one — the "look here too" trail. */
   relatedBugs: Bug[];
+  /** Every initiative this session could be moved to. */
+  initiatives: Initiative[];
   onBack: () => void;
   onStatusChange: (id: string, status: BugStatus) => void;
   onSeverityChange: (id: string, severity: BugSeverity) => void;
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
   onComment: (id: string, body: string) => void;
+  onInitiativeChange: (id: string, initiative: Initiative | null) => void;
+  onTagsChange: (id: string, tags: string[]) => void;
   /** Free-text edits. Any signed-in user may make them; history records each field. */
   onEdit: (id: string, patch: Partial<Bug>) => void;
   /** Re-publish this bug's server snapshot — wired to the "Not synced" banner's Retry. */
@@ -66,6 +75,13 @@ export function BugDetail({
       setTimeout(() => setAgentCopied(false), 1500);
     });
   };
+  // The preset vocabulary plus whatever the team already uses on its initiatives — suggesting an
+  // existing tag is what keeps a session findable next to its siblings instead of orphaned by a
+  // near-miss spelling.
+  const tagSuggestions = useMemo(
+    () => [...new Set([...PRESET_TAGS, ...initiatives.flatMap((i) => i.tags ?? [])])].sort(),
+    [initiatives],
+  );
   const clock = useReplayClock(bug.durationMs);
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
 
@@ -204,18 +220,19 @@ export function BugDetail({
                 {ENV_META[bug.env as Env].label}
               </span>
             )}
-            {/* tags link to the filtered list */}
-            {bug.tags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => navigate(`/sessions?tag=${encodeURIComponent(tag)}`)}
-                className="rounded-full bg-secondary px-2 py-px text-[10.5px] font-medium text-secondary-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title={`Show all sessions tagged "${tag}"`}
-              >
-                {tag}
-              </button>
-            ))}
+            {/* Which effort this belongs to, and how it gets found — both editable in place, because
+                a session filed against the wrong initiative is one the right team never sees. */}
+            <InitiativePicker
+              initiativeId={bug.initiativeId ?? null}
+              initiatives={initiatives}
+              onChange={(init) => onInitiativeChange(bug.id, init)}
+            />
+            <TagEditor
+              tags={bug.tags}
+              suggestions={tagSuggestions}
+              onChange={(tags) => onTagsChange(bug.id, tags)}
+              onOpenTag={(tag) => navigate(`/sessions?tag=${encodeURIComponent(tag)}`)}
+            />
             <span className="ml-auto flex items-center gap-3 text-[11.5px] text-muted-foreground">
               <button
                 type="button"
