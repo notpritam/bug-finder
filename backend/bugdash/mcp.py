@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from .bugs import load_bug
+from .capture_health import capture_health
 from .comments import list_comments_for
 from .evidence_store import guard_offloaded
 from .summary import build_summary_markdown
@@ -51,6 +52,13 @@ async def mcp_bug(human_id: str) -> dict[str, Any]:
         # unpacked extension is reloaded, so "field missing" and "extension is stale" look
         # identical without it — that ambiguity is what made BF-108 slow to read.
         "captureSchemaVersion": doc.get("captureSchemaVersion"),
+        # How the recording itself went. Two very different problems present as one thin report:
+        # a page that was genuinely quiet, and a capture that shed evidence to stay inside memory
+        # or crashed part-way. An agent asked to explain a gap should be able to tell them apart
+        # without asking the reporter, and `extensionErrors` is the only route by which a crash in
+        # the extension reaches anybody at all — that ring lives in the reporter's browser and
+        # rides out on the next capture that files successfully.
+        "captureHealth": capture_health(doc.get("diagnostics")),
         "appInfo": doc.get("appInfo") if isinstance(doc.get("appInfo"), dict) else None,
         "summary_markdown": build_summary_markdown(doc, comments),
         "resources": {

@@ -19,7 +19,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
-import type { Bug, ConsoleEntry, NetEntry } from "@/lib/types";
+import type { Bug, CaptureDiagnostics, ConsoleEntry, NetEntry } from "@/lib/types";
 import { fetchStoredJson, storageDownloadUrl } from "@/lib/storage-api";
 import { OFFLOADED_EVIDENCE_KEYS } from "@/lib/drafts";
 import { expandStorageChanges, type StorageWrite } from "@/lib/storageCompact";
@@ -1083,6 +1083,7 @@ function InfoPanel({ bug }: { bug: Bug }) {
           )}
         </DetailSection>
       )}
+      <CaptureHealth diagnostics={bug.diagnostics} />
       <DetailSection title="App build">
         <div className="grid grid-cols-1 gap-2">
           <Fact label="Version" value={build.version} mono />
@@ -1798,6 +1799,61 @@ function DetailSection({ title, children }: { title: ReactNode; children: ReactN
  *  the release cut is absent from production while looking shipped everywhere else. "Not
  *  captured" is a real answer too — an old content script records nothing here, and silence
  *  reads as "same build as today", which is exactly when it is not. */
+/**
+ * How the recording itself went, in the extension's own words.
+ *
+ * Two failures look identical in a bug report and have opposite fixes: a page that was genuinely
+ * quiet, and a capture that lost evidence keeping itself inside memory. Worse, an extension that
+ * crashed on the four recordings before this one leaves no trace anywhere a developer can reach —
+ * the error ring lives in the reporter's browser and travels only on the next capture that
+ * actually files. So when there is anything to say, this says it; when the run was clean it shows
+ * the build alone and gets out of the way.
+ */
+function CaptureHealth({ diagnostics }: { diagnostics?: CaptureDiagnostics }) {
+  if (!diagnostics) return null;
+  const degradations = diagnostics.degradations ?? [];
+  const errors = diagnostics.recentErrors ?? [];
+  const heap = diagnostics.memory?.usedJsHeapMb;
+  return (
+    <DetailSection title="Capture health">
+      <div className="grid grid-cols-2 gap-2">
+        <Fact label="Extension" value={`v${diagnostics.extensionVersion}`} />
+        {diagnostics.packagedInMs != null ? (
+          <Fact label="Packaged in" value={`${(diagnostics.packagedInMs / 1000).toFixed(1)}s`} />
+        ) : null}
+        {heap != null ? <Fact label="Page heap" value={`${Math.round(heap)} MB`} /> : null}
+        {diagnostics.bytes?.cdpBodyBytesDropped ? (
+          <Fact
+            label="Bodies shed"
+            value={`${(diagnostics.bytes.cdpBodyBytesDropped / 1e6).toFixed(1)} MB`}
+          />
+        ) : null}
+      </div>
+      {degradations.length > 0 && (
+        <ul className="space-y-1 text-[10.5px] leading-snug text-amber-600 dark:text-amber-400">
+          {degradations.map((d) => (
+            <li key={d}>{d}</li>
+          ))}
+        </ul>
+      )}
+      {errors.length > 0 && (
+        <details className="text-[10.5px] leading-snug">
+          <summary className="cursor-pointer text-rose-600 dark:text-rose-400">
+            {errors.length} extension error{errors.length > 1 ? "s" : ""} during this recording
+          </summary>
+          <ul className="mt-1 space-y-1 text-muted-foreground">
+            {errors.map((e, i) => (
+              <li key={`${e.at}-${i}`}>
+                <span className="text-foreground">{e.where}</span> — {e.message}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </DetailSection>
+  );
+}
+
 function readAppBuild(appInfo: unknown): { version: string; builtAt: string; commit?: string } {
   const info = appInfo && typeof appInfo === "object" ? (appInfo as Record<string, unknown>) : null;
   const str = (key: string): string | undefined => {

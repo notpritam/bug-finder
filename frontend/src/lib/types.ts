@@ -330,4 +330,42 @@ export interface DeepCapture {
     replay?: number;
     rrwebEvents?: number;
   };
+  /** How the capture itself went — the extension's report on its own health. See CaptureDiagnostics. */
+  diagnostics?: CaptureDiagnostics;
+}
+
+/**
+ * The extension's report on its own run, attached to every capture it makes.
+ *
+ * This is the only channel through which an extension crash reaches anyone. The error ring it
+ * carries lives in the reporter's browser and is uploaded nowhere else, so a recording that files
+ * successfully is the one chance to learn that the previous four did not. Kept inline on the bug
+ * document, never offloaded with the evidence: its whole purpose is being readable without
+ * fetching anything.
+ */
+export interface CaptureDiagnostics {
+  /** The extension build that produced this capture. A field crash traces to an exact version. */
+  extensionVersion: string;
+  captureSchemaVersion: number;
+  /** Wall-clock ms from Stop to the draft being ready. */
+  packagedInMs?: number;
+  durationMs: number;
+  /** Volume actually captured, so a thin report explains itself instead of looking like a quiet page. */
+  counts: {
+    replay: number;
+    console: number;
+    network: number;
+    stateChanges: number;
+    storageChanges: number;
+    rrwebEvents: number;
+    harEntries?: number;
+  };
+  /** Approximate bytes held by channel — the numbers that predict an out-of-memory kill. */
+  bytes: { network: number; cdpBodyBytes?: number; cdpBodyBytesDropped?: number };
+  /** Every place the capture bounded itself to stay within memory. Empty on a clean run; each
+   *  entry is a deliberate, reported loss rather than a silent one. */
+  degradations: string[];
+  memory?: { usedJsHeapMb?: number; totalJsHeapMb?: number; jsHeapLimitMb?: number; deviceMemoryGb?: number };
+  /** Errors thrown inside the EXTENSION's own code — never the page's — newest last. */
+  recentErrors?: { at: number; where: string; message: string; stack?: string }[];
 }

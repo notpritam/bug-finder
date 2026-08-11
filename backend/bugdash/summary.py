@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter
 
 from .bugs import load_bug
+from .capture_health import capture_health_lines
 from .comments import list_comments_for
 from .core import fmt_offset
 from .evidence_store import guard_offloaded
@@ -219,6 +220,8 @@ def build_summary_markdown(doc: dict[str, Any], comments: list[CommentOut]) -> s
                 f"Thin evidence here means it was not collected, not that the page was quiet."
             )
         lines.append("")
+
+    lines.extend(capture_health_lines(doc.get("diagnostics")))
 
     layout = doc.get("layoutDebug")
     layout_md = layout_lines(layout)

@@ -306,6 +306,11 @@ const DEEP_CAPTURE_KEYS = [
   "cacheStorage",
   "browserLog",
   "cdp",
+  // Added late, and the comment above turned out to be prophetic: the extension had been
+  // attaching this to every capture since the memory-safety release and both mappings ignored
+  // it, so every filed bug reported a healthy capture whether or not the extension had been
+  // crashing. It is the ONLY route an extension crash has to anyone who could fix it.
+  "diagnostics",
 ] as const satisfies readonly (keyof DeepCapture)[];
 
 let submitSeq = 0;
