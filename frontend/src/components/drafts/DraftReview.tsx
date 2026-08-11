@@ -1,7 +1,7 @@
 // ABOUTME: Review a captured session before filing it — play/scrub the replay, trim it with
 // ABOUTME: handles, add flags at timestamps, inspect evidence, fill the report, then submit.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Flag, Scissors, Send, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Flag, Loader2, Scissors, Send, Sparkles, Trash2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Bug, BugSeverity, Draft, Reporter } from "@/lib/types";
 import type { AuthUser } from "@/lib/auth";
@@ -27,7 +27,8 @@ export function DraftReview({
   user: AuthUser | null;
   people: Reporter[];
   onChange: (draft: Draft) => void;
-  onSubmit: (draft: Draft) => void;
+  /** May resolve after uploads + allocation; the button stays disabled while it runs. */
+  onSubmit: (draft: Draft) => void | Promise<unknown>;
   onDiscard: (id: string) => void;
   onBack: () => void;
 }) {
@@ -209,7 +210,13 @@ export function DraftReview({
 
   const canSubmit = (draft.title ?? "").trim().length > 0;
 
-  const handleSubmit = () => {
+  // Filing uploads the recording and allocates the id, so it is not instant — without this
+  // guard a double-click files the same capture twice (two rows, one humanId).
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (submitting) return;
     if (
       droppedSummary &&
       !window.confirm(
@@ -217,7 +224,15 @@ export function DraftReview({
       )
     )
       return;
-    onSubmit(draft);
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onSubmit(draft);
+      // On success this screen unmounts (navigation to the filed bug) — no state to reset.
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Filing failed — the draft is still here. Try again.");
+      setSubmitting(false);
+    }
   };
 
   const sortedMarkers = draft.markers
@@ -390,18 +405,26 @@ export function DraftReview({
         <div className="flex items-center gap-3 pb-8">
           <button
             type="button"
-            disabled={!canSubmit}
-            onClick={handleSubmit}
-            title={canSubmit ? "File this bug" : "Add a title first"}
+            disabled={!canSubmit || submitting}
+            onClick={() => void handleSubmit()}
+            title={submitting ? "Filing…" : canSubmit ? "File this bug" : "Add a title first"}
+            data-testid="submit-draft-btn"
             className={cn(
               "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-bold transition",
-              canSubmit
+              canSubmit && !submitting
                 ? "bg-primary text-primary-foreground shadow-card hover:opacity-90"
                 : "cursor-not-allowed bg-muted text-muted-foreground",
+              submitting && "cursor-wait bg-primary/70 text-primary-foreground",
             )}
           >
-            <Send className="size-4" /> {user ? "Submit bug" : "Submit as Anonymous"}
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            {submitting ? "Filing…" : user ? "Submit bug" : "Submit as Anonymous"}
           </button>
+          {submitError && (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
+              <AlertTriangle className="size-3.5" /> {submitError}
+            </span>
+          )}
           {!user && (
             <button
               type="button"

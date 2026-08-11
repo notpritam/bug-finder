@@ -13,7 +13,9 @@ import {
   Rocket,
   ShieldCheck,
   Sun,
+  UserCheck,
   UserRound,
+  Users,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Bug } from "@/lib/types";
@@ -21,7 +23,17 @@ import type { AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/common/bits";
 
-export type SidebarView = "all" | "open" | "in_progress" | "resolved" | "mine" | "drafts" | "initiatives" | "insights";
+export type SidebarView =
+  | "all"
+  | "open"
+  | "in_progress"
+  | "resolved"
+  | "mine"
+  | "reported"
+  | "drafts"
+  | "initiatives"
+  | "insights"
+  | "admin";
 
 const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[], meId: string) => number }[] = [
   // "Sessions", not "bugs": a capture is a recorded session, and plenty are worth keeping
@@ -30,7 +42,10 @@ const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: B
   { key: "open", label: "Open", icon: <CircleDot className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "open").length },
   { key: "in_progress", label: "In progress", icon: <Loader2 className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "in_progress").length },
   { key: "resolved", label: "Resolved", icon: <ShieldCheck className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "resolved").length },
-  { key: "mine", label: "Assigned to me", icon: <UserRound className="size-[17px]" />, count: (b, meId) => b.filter((x) => x.assignee?.id === meId).length },
+  // Reported-by-me and assigned-to-me are different questions — "what did I file" vs "what is
+  // waiting on me" — and collapsing them hid one of the two.
+  { key: "reported", label: "My sessions", icon: <UserRound className="size-[17px]" />, count: (b, meId) => b.filter((x) => x.reporter?.id === meId).length },
+  { key: "mine", label: "Assigned to me", icon: <UserCheck className="size-[17px]" />, count: (b, meId) => b.filter((x) => x.assignee?.id === meId).length },
 ];
 
 export function Sidebar({
@@ -147,6 +162,17 @@ export function Sidebar({
               active={view === "insights"}
               onClick={() => onView("insights")}
             />
+            {/* Account management. Hidden from non-admins as a courtesy — the server is what
+                actually refuses them. */}
+            {user.isAdmin && (
+              <NavRow
+                collapsed={collapsed}
+                icon={<Users className="size-[17px]" />}
+                label="Team"
+                active={view === "admin"}
+                onClick={() => onView("admin")}
+              />
+            )}
           </>
         )}
       </nav>

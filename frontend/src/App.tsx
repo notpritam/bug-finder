@@ -1,6 +1,7 @@
 // ABOUTME: App shell + URL routing behind the auth gate — every screen has a shareable URL.
 // ABOUTME: Drafts and filed bugs persist in IndexedDB; recordings live in the storage service.
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CloudOff, RefreshCw, X } from "lucide-react";
 import {
   BrowserRouter,
   Navigate,
@@ -11,19 +12,24 @@ import {
   useParams,
 } from "react-router-dom";
 import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
-import { USERS } from "@/lib/data";
-import { ANONYMOUS, isAdmin, listAccountUsers, loadSession, signOut, type AuthUser } from "@/lib/auth";
+import { ANONYMOUS, isAdmin, listAccountUsers, loadSession, signOut, verifySession, type AuthUser } from "@/lib/auth";
 import {
   bugFromDraft,
+  dedupeByHumanId,
   draftFromExtension,
   loadDrafts,
   loadSubmittedBugs,
   persistDraft,
+  persistDraftDurable,
   persistSubmittedBug,
+  publishStoredBug,
   removeBug,
   removeDraft,
+  storeBugLocal,
+  type SyncResult,
 } from "@/lib/drafts";
 import { uploadJson } from "@/lib/storage-api";
+import { allocateHumanId, fetchBug, listBugs, patchBug } from "@/lib/bugs-api";
 import { onSync } from "@/lib/sync";
 import { Sidebar, type SidebarView } from "@/components/shell/Sidebar";
 import { AuthScreen } from "@/components/auth/AuthScreen";
@@ -34,7 +40,16 @@ import { DraftReview } from "@/components/drafts/DraftReview";
 import { InitiativesPage } from "@/components/initiatives/InitiativesPage";
 import { InitiativeDetail } from "@/components/initiatives/InitiativeDetail";
 import { InsightsPage } from "@/components/insights/InsightsPage";
+import { AdminPage } from "@/components/admin/AdminPage";
 import { listInitiatives, type Initiative } from "@/lib/initiatives";
+
+/** What the server owns once a session is filed — the collaborative surface. Everything else on
+ *  a bug is capture evidence, which no one edits and which the shared list does not carry. */
+const SHARED_FIELDS = [
+  "title", "description", "status", "severity", "assignee", "tags",
+  "initiative", "initiativeId", "category", "env", "jobId", "events", "updatedAt",
+] as const satisfies readonly (keyof Bug)[];
+const SERVER_EDITABLE = new Set<string>(SHARED_FIELDS.filter((f) => f !== "events" && f !== "updatedAt"));
 
 const DemoCapture = lazy(() => import("@/components/drafts/DemoCapture").then((m) => ({ default: m.DemoCapture })));
 
@@ -47,8 +62,11 @@ const VIEW_TO_PATH: Record<SidebarView, string> = {
   drafts: "/drafts",
   initiatives: "/initiatives",
   insights: "/insights",
+  admin: "/admin",
+  reported: "/sessions/reported",
 };
 const PATH_TO_VIEW: Record<string, SidebarView> = {
+  reported: "reported",
   open: "open",
   "in-progress": "in_progress",
   resolved: "resolved",
@@ -68,6 +86,9 @@ function Shell({
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [bugs, setBugs] = useState<Bug[]>([]);
+  /** Current rows for handlers that outlive a render (retry from the sync toast). */
+  const bugsRef = useRef<Bug[]>([]);
+  bugsRef.current = bugs;
   const [drafts, setDrafts] = useState<Draft[]>([]);
   // Deep links to persisted bugs/drafts must wait for IndexedDB before deciding "not found".
   const [hydrated, setHydrated] = useState(false);
@@ -101,25 +122,57 @@ function Shell({
     void refreshInitiatives();
   }, []);
 
-  // Everyone assignable: you, registered accounts, and the demo roster (deduped by email —
-  // a registered account supersedes its roster stand-in).
+  // Accounts live on the server now, so the roster is fetched rather than read synchronously.
+  const [accounts, setAccounts] = useState<AuthUser[]>([]);
+  useEffect(() => {
+    void listAccountUsers().then(setAccounts);
+  }, [user]);
+
+  // Everyone assignable: you and every real account, deduped by email. A hardcoded roster used
+  // to be merged in here (Maya Chen, Dev Patel, Sara Kim) — names that read like teammates and
+  // could be assigned work, but belonged to nobody and could never open the session.
   const people = useMemo<Reporter[]>(() => {
     const map = new Map<string, Reporter>();
-    for (const p of [...(user ? [user] : []), ...listAccountUsers(), ...USERS]) {
+    for (const p of [...(user ? [user] : []), ...accounts]) {
       if (!map.has(p.email.toLowerCase())) map.set(p.email.toLowerCase(), p);
     }
     return [...map.values()];
-  }, [user]);
+  }, [user, accounts]);
 
   // Hydrate persisted state (IndexedDB) once on mount. Merge rather than replace — a draft
   // can arrive from the extension bridge before this resolves, and must not be dropped.
+  // Bugs collapse by humanId (newest wins): a double-submit leaves two rows with one humanId.
   useEffect(() => {
     void Promise.all([loadSubmittedBugs(), loadDrafts()]).then(([submitted, storedDrafts]) => {
-      setBugs((prev) => [...prev, ...submitted.filter((b) => !prev.some((p) => p.id === b.id))]);
+      setBugs((prev) => dedupeByHumanId([...prev, ...submitted.filter((b) => !prev.some((p) => p.id === b.id))]));
       setDrafts((prev) => [...prev, ...storedDrafts.filter((d) => !prev.some((p) => p.id === d.id))]);
       setHydrated(true);
     });
   }, []);
+
+  // The team's sessions, not just this browser's. The server row wins for everything people
+  // change together; the local row keeps the evidence, which the list deliberately omits.
+  useEffect(() => {
+    void listBugs().then((remote) => {
+      if (!remote.length) return;
+      setBugs((prev) => {
+        const byHuman = new Map(prev.map((b) => [b.humanId, b] as const));
+        for (const r of remote) {
+          const local = byHuman.get(r.humanId);
+          if (!local) {
+            byHuman.set(r.humanId, r);
+            continue;
+          }
+          const shared: Partial<Bug> = {};
+          for (const k of SHARED_FIELDS) {
+            if (r[k] !== undefined) (shared as Record<string, unknown>)[k] = r[k];
+          }
+          byHuman.set(r.humanId, { ...local, ...shared });
+        }
+        return [...byHuman.values()].sort((a, b) => b.createdAt - a.createdAt);
+      });
+    });
+  }, [user]);
 
   // Mutations made in another dashboard tab (new draft delivered there, bug filed, draft
   // discarded) arrive over a BroadcastChannel so this tab never needs a manual refresh.
@@ -134,19 +187,75 @@ function Shell({
       } else if (msg.kind === "draft-remove") {
         setDrafts((prev) => prev.filter((d) => d.id !== msg.id));
       } else if (msg.kind === "bug-put") {
-        setBugs((prev) =>
-          prev.some((b) => b.id === msg.bug.id)
-            ? prev.map((b) => (b.id === msg.bug.id ? msg.bug : b))
-            : [msg.bug, ...prev],
-        );
+        setBugs((prev) => {
+          if (prev.some((b) => b.id === msg.bug.id)) {
+            return prev.map((b) => (b.id === msg.bug.id ? msg.bug : b));
+          }
+          // Same capture filed from another tab: allocate is idempotent by draftId, so both
+          // filings carry one humanId but different local ids. Keep the newest row rather
+          // than showing two, one of them unopenable.
+          const twin = prev.find((b) => b.humanId === msg.bug.humanId);
+          if (twin) {
+            return msg.bug.createdAt >= twin.createdAt
+              ? prev.map((b) => (b.humanId === msg.bug.humanId ? msg.bug : b))
+              : prev;
+          }
+          return [msg.bug, ...prev];
+        });
       } else if (msg.kind === "bug-remove") {
         setBugs((prev) => prev.filter((b) => b.id !== msg.id));
       }
     });
   }, []);
 
+  // Publish outcomes for THIS tab. The BroadcastChannel never delivers to its own sender, so
+  // the filing tab learns success/failure from the returned promise — these route the result
+  // into state (the row's "Not synced" indicator) and a dismissable banner with a retry.
+  const [syncAlert, setSyncAlert] = useState<{ humanId: string; message: string } | null>(null);
+
+  const applySyncResult = useCallback((res: SyncResult) => {
+    setBugs((prev) =>
+      prev.map((b) => (b.id === res.bug.id ? { ...b, syncState: res.bug.syncState, syncError: res.bug.syncError } : b)),
+    );
+    if (!res.ok) {
+      setSyncAlert({
+        humanId: res.bug.humanId,
+        message: res.error ?? "The bug could not reach the server.",
+      });
+    }
+  }, []);
+
+  /** Persist + publish a bug row, then surface the outcome in this tab. */
+  const syncBug = useCallback(
+    (bug: Bug) => {
+      void persistSubmittedBug(bug).then(applySyncResult);
+    },
+    [applySyncResult],
+  );
+
+  /** Re-run the server publish for a bug that never made it — wired to every Retry control. */
+  const retrySync = useCallback(
+    async (bugId: string) => {
+      const bug = bugsRef.current.find((b) => b.id === bugId);
+      if (!bug) return;
+      setSyncAlert(null);
+      applySyncResult(await publishStoredBug(bug));
+    },
+    [applySyncResult],
+  );
+
+  /** Replace a light list row with the full server row once its evidence has been fetched, and
+   *  keep the local copy so the next open is instant and works offline. */
+  const hydrateBug = useCallback((full: Bug) => {
+    setBugs((prev) => prev.map((b) => (b.humanId === full.humanId ? { ...b, ...full } : b)));
+    void storeBugLocal(full);
+  }, []);
+
   /** Points at submitDraft, which is defined further down — see the note there. */
   const submitRef = useRef<((draft: Draft) => Promise<Bug>) | null>(null);
+  /** Draft ids already taken from the bridge. Filing is asynchronous and the bridge resends
+   *  until acknowledged, so without this the same capture is filed twice. */
+  const handledDrafts = useRef<Set<string>>(new Set());
 
   // Captures arriving from the extension bridge become drafts (owned by you) and open for review.
   useEffect(() => {
@@ -167,6 +276,9 @@ function Shell({
           rrwebFileId?: string;
           rrweb?: unknown[];
           videoFileId?: string;
+          // The HAR is the largest artefact a capture produces, so its upload almost always
+          // finishes after the report is filed — it arrives here or not at all.
+          harFileId?: string;
           shots?: { id: string; t: number; fileId?: string; savedAs?: string }[];
         };
         window.postMessage({ source: "bugfinder-dashboard", type: "draft-patch-received", id: patch.id }, "*");
@@ -175,6 +287,7 @@ function Shell({
             rrweb?: unknown[];
             rrwebFileId?: string;
             videoFileId?: string;
+            harFileId?: string;
             shots?: { id: string; t: number; fileId?: string; savedAs?: string }[];
           },
         >(
@@ -184,6 +297,7 @@ function Shell({
           rrwebFileId: patch.rrwebFileId ?? row.rrwebFileId,
           rrweb: patch.rrweb ?? row.rrweb,
           videoFileId: patch.videoFileId ?? row.videoFileId,
+          harFileId: patch.harFileId ?? row.harFileId,
           // Shots arrive one at a time as each upload lands — merge by id, never replace.
           shots: patch.shots
             ? [
@@ -204,7 +318,7 @@ function Shell({
           prev.map((b) => {
             if (b.draftId !== patch.id) return b;
             const next = attach(b);
-            persistSubmittedBug(next);
+            syncBug(next);
             return next;
           }),
         );
@@ -214,25 +328,47 @@ function Shell({
       if (e.data.type !== "draft") return;
       const payload = e.data.draft as Record<string, unknown>;
       const incoming = draftFromExtension(payload, user ?? undefined);
-      window.postMessage({ source: "bugfinder-dashboard", type: "draft-received", id: incoming.id }, "*");
+      const ackReceived = () =>
+        window.postMessage({ source: "bugfinder-dashboard", type: "draft-received", id: incoming.id }, "*");
 
-      // The side panel already collected the report, so file it on arrival and hand the bug
-      // id straight back for the panel to show.
-      if (payload.autoSubmit) {
-        void submitRef.current?.(incoming).then((bug) => {
-          window.postMessage(
-            { source: "bugfinder-dashboard", type: "draft-filed", id: incoming.id, humanId: bug.humanId },
-            "*",
-          );
-        });
+      // A draft already taken is durably stored (or filed), so re-acknowledge immediately: the
+      // ack is what stops the bridge resending every 500ms, and filing is asynchronous —
+      // without this guard the same capture is filed twice (how one recording became BF-110
+      // and BF-111).
+      if (handledDrafts.current.has(incoming.id)) {
+        ackReceived();
         return;
       }
-      setDrafts((prev) => {
-        if (prev.some((d) => d.id === incoming.id)) return prev;
-        persistDraft(incoming);
-        return [incoming, ...prev];
-      });
-      navigate(`/drafts/${incoming.id}`);
+      handledDrafts.current.add(incoming.id);
+
+      void (async () => {
+        try {
+          // Durable BEFORE the ack. The bridge drops its queue entry on `draft-received`, so
+          // until this write lands the extension holds the only copy of the capture — acking
+          // first left a window where one failure lost it from both places.
+          await persistDraftDurable(incoming);
+        } catch {
+          // Not stored — do not ack; the next redelivery retries.
+          handledDrafts.current.delete(incoming.id);
+          return;
+        }
+        ackReceived();
+        // The side panel already collected the report, so file it on arrival. The filed signal
+        // is posted inside submitDraft (gated on the publish outcome), so reviewing in the
+        // dashboard and auto-filing both tell the extension the truth.
+        if (payload.autoSubmit) {
+          try {
+            await submitRef.current?.(incoming);
+          } catch {
+            // Filing failed after the draft was durably stored — surface it for manual review
+            // rather than looping; nothing is lost.
+            setDrafts((prev) => (prev.some((d) => d.id === incoming.id) ? prev : [incoming, ...prev]));
+          }
+          return;
+        }
+        setDrafts((prev) => (prev.some((d) => d.id === incoming.id) ? prev : [incoming, ...prev]));
+        navigate(`/drafts/${incoming.id}`);
+      })();
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -246,15 +382,9 @@ function Shell({
 
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
-    seg[0] === "drafts"
-      ? "drafts"
-      : seg[0] === "initiatives"
-        ? "initiatives"
-        : seg[0] === "insights"
-          ? "insights"
-          : seg[0] === "bugs"
-            ? (PATH_TO_VIEW[seg[1]] ?? "all")
-            : "all";
+    seg[0] === "bugs"
+      ? (PATH_TO_VIEW[seg[1]] ?? "all")
+      : ((["drafts", "initiatives", "insights", "admin"] as const).find((v) => v === seg[0]) ?? "all");
 
   /** Mutate one bug, appending a history event, and persist it. */
   const amendBug = (id: string, patch: Partial<Bug>, historyDetail: string | null) => {
@@ -278,7 +408,14 @@ function Shell({
               ]
             : b.events,
         };
-        persistSubmittedBug(next);
+        // Local first, so the UI never waits on the network. Then the change alone travels to
+        // the server: republishing the entire snapshot per edit is what made two people editing
+        // one session overwrite each other.
+        void storeBugLocal(next);
+        const shared = Object.fromEntries(
+          Object.entries(patch).filter(([k]) => SERVER_EDITABLE.has(k)),
+        );
+        if (Object.keys(shared).length) void patchBug(next.humanId, shared);
         return next;
       }),
     );
@@ -341,7 +478,7 @@ function Shell({
         if (patch.tags !== undefined) record("tags", b.tags.join(", "), patch.tags.join(", "));
         if (events.length === b.events.length) return b;
         const next: Bug = { ...b, ...patch, updatedAt: at, events };
-        persistSubmittedBug(next);
+        syncBug(next);
         return next;
       }),
     );
@@ -359,9 +496,17 @@ function Shell({
         /* keep inline */
       }
     }
-    const bug = bugFromDraft(toFile, bugs, user ?? ANONYMOUS, people);
-    persistSubmittedBug(bug);
-    setBugs((prev) => [bug, ...prev]);
+    // The server issues the number. Idempotent by draftId, so a re-delivered filing reuses the
+    // id it already has instead of creating a second bug for one recording.
+    const allocated = await allocateHumanId(draft.id);
+    const bug = bugFromDraft(toFile, bugs, user ?? ANONYMOUS, people, allocated);
+    // The local write is the capture's only home until the server has a copy, so it must be
+    // durable before the draft is dropped. Rejects if IndexedDB refused — the draft survives
+    // and the submit button unsticks.
+    await storeBugLocal(bug);
+    // Dedup by humanId, not just local id: a double-submit re-runs allocate (idempotent — same
+    // humanId) but mints a fresh local id, which is how one recording became two list rows.
+    setBugs((prev) => [bug, ...prev.filter((b) => b.id !== bug.id && b.humanId !== bug.humanId)]);
     // Navigate BEFORE dropping the draft — removing it first re-renders the draft route,
     // whose not-found redirect would win the race. Guests can't view bugs, so they land
     // back on Drafts with a filed confirmation instead.
@@ -369,6 +514,18 @@ function Shell({
     else navigate(`/drafts?submitted=${bug.humanId}`, { replace: true });
     removeDraft(draft.id);
     setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    // Publish the server snapshot. `draft-filed` is gated on the outcome: a failed publish
+    // must not tell the extension the bug was filed — the panel would report a hand-off that
+    // silently never completed, which is exactly how BF-102..106 went missing.
+    void publishStoredBug(bug).then((res) => {
+      applySyncResult(res);
+      if (res.ok) {
+        window.postMessage(
+          { source: "bugfinder-dashboard", type: "draft-filed", id: draft.id, humanId: bug.humanId },
+          "*",
+        );
+      }
+    });
     return bug;
   };
   // The extension bridge files auto-submitted captures through this, and the effect above is
@@ -377,6 +534,45 @@ function Shell({
 
   return (
     <div className="flex h-full">
+      {/* Publish-failure toast for THIS tab — the one that filed. Stays until dismissed. */}
+      {syncAlert && (
+        <div className="fixed inset-x-0 top-3 z-50 flex justify-center px-4">
+          <div
+            role="alert"
+            data-testid="sync-alert"
+            className="flex w-full max-w-xl items-start gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 shadow-lg dark:border-red-500/40 dark:bg-red-950"
+          >
+            <CloudOff className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-bold text-red-800 dark:text-red-300">
+                {syncAlert.humanId} didn't reach the server
+              </p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-red-700/90 dark:text-red-400/90">
+                {syncAlert.message} It is saved on this device and marked “Not synced” in the list.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const b = bugsRef.current.find((x) => x.humanId === syncAlert.humanId);
+                if (b) void retrySync(b.id);
+                else setSyncAlert(null);
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-[12px] font-bold text-white transition hover:bg-red-700"
+            >
+              <RefreshCw className="size-3.5" /> Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => setSyncAlert(null)}
+              aria-label="Dismiss"
+              className="grid size-6 shrink-0 place-items-center rounded-md text-red-700/70 transition hover:bg-red-100 hover:text-red-800 dark:text-red-400/70 dark:hover:bg-red-500/10"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((c) => !c)}
@@ -406,6 +602,7 @@ function Shell({
                   onStatusChange={changeStatus}
                   canDelete={isAdmin(user)}
                   onDelete={deleteBugs}
+                  onRetrySync={retrySync}
                 />
               ) : (
                 <Navigate to="/auth" replace />
@@ -428,6 +625,8 @@ function Shell({
                 onAssigneeChange={changeAssignee}
                 onComment={addComment}
                 onEdit={editBug}
+                onHydrateBug={hydrateBug}
+                onRetrySync={retrySync}
               />
               )
             }
@@ -480,6 +679,7 @@ function Shell({
             path="/insights"
             element={user ? <InsightsPage bugs={bugs} initiatives={initiatives} /> : <Navigate to="/auth" replace />}
           />
+          <Route path="/admin" element={user ? <AdminPage user={user} /> : <Navigate to="/auth" replace />} />
           <Route
             path="/auth"
             element={
@@ -542,12 +742,14 @@ function BugsRoute({
   onStatusChange,
   canDelete,
   onDelete,
+  onRetrySync,
 }: {
   bugs: Bug[];
   me: Reporter | null;
   onStatusChange: (id: string, status: BugStatus) => void;
   canDelete: boolean;
   onDelete: (ids: string[]) => void;
+  onRetrySync: (id: string) => Promise<void>;
 }) {
   const navigate = useNavigate();
   const { view } = useParams();
@@ -565,6 +767,7 @@ function BugsRoute({
       onStatusChange={onStatusChange}
       canDelete={canDelete}
       onDelete={onDelete}
+      onRetrySync={onRetrySync}
     />
   );
 }
@@ -579,6 +782,8 @@ function BugRoute({
   onAssigneeChange,
   onComment,
   onEdit,
+  onHydrateBug,
+  onRetrySync,
 }: {
   hydrated: boolean;
   bugs: Bug[];
@@ -589,10 +794,27 @@ function BugRoute({
   onAssigneeChange: (id: string, assignee: Reporter | null) => void;
   onComment: (id: string, body: string) => void;
   onEdit: (id: string, patch: Partial<Bug>) => void;
+  onHydrateBug: (full: Bug) => void;
+  onRetrySync: (id: string) => Promise<void>;
 }) {
   const navigate = useNavigate();
   const { humanId } = useParams();
-  const bug = bugs.find((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
+  // Resolve by humanId, newest first — if duplicate rows ever coexist (a double-submit from
+  // before the dedup landed), the shared link opens the surviving row instead of a dead one.
+  const matches = bugs.filter((b) => b.humanId.toLowerCase() === humanId?.toLowerCase());
+  const bug = matches.length > 1 ? matches.reduce((a, b) => (b.createdAt > a.createdAt ? b : a)) : matches[0];
+  // A session filed on someone else's machine reaches this browser through the shared list,
+  // which carries no recording, network or console. Pull the full row the first time it is opened.
+  useEffect(() => {
+    if (!bug || bug.rrweb || bug.network || bug.evidenceFileId === undefined) return;
+    let live = true;
+    void fetchBug(bug.humanId).then((full) => {
+      if (live && full) onHydrateBug(full);
+    });
+    return () => {
+      live = false;
+    };
+  }, [bug?.humanId]);
   if (!bug && !hydrated) return null;
   if (!bug) return <Navigate to="/sessions" replace />;
   // Always the list, never history. The control says "All sessions", so that is where it goes;
@@ -626,6 +848,7 @@ function BugRoute({
       onAssigneeChange={onAssigneeChange}
       onComment={onComment}
       onEdit={onEdit}
+      onRetrySync={onRetrySync}
     />
   );
 }
@@ -644,7 +867,7 @@ function DraftRoute({
   user: AuthUser | null;
   people: Reporter[];
   onChange: (d: Draft) => void;
-  onSubmit: (d: Draft) => void;
+  onSubmit: (d: Draft) => Promise<Bug>;
   onDiscard: (id: string) => void;
 }) {
   const navigate = useNavigate();
@@ -685,7 +908,14 @@ function AuthGate({ onAuthed }: { onAuthed: (u: AuthUser) => void }) {
 }
 
 function App() {
+  // Paint from the cached session immediately, then confirm it with the server. A token the
+  // backend no longer honours must not keep someone looking signed in.
   const [user, setUser] = useState<AuthUser | null>(loadSession);
+  useEffect(() => {
+    void verifySession().then((fresh) => {
+      if (fresh || !loadSession()) setUser(fresh);
+    });
+  }, []);
   return (
     <BrowserRouter>
       <Shell

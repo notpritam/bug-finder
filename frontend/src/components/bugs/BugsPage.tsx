@@ -15,6 +15,7 @@ import {
   BugTagChips,
   UserAvatar,
 } from "@/components/common/bits";
+import { isUnsynced, SyncBadge } from "@/components/common/SyncBadge";
 
 type StatusFilter = BugStatus | "all";
 type SeverityFilter = BugSeverity | "all";
@@ -33,6 +34,7 @@ export function BugsPage({
   onStatusChange,
   canDelete = false,
   onDelete,
+  onRetrySync,
 }: {
   bugs: Bug[];
   me: Reporter | null;
@@ -42,6 +44,8 @@ export function BugsPage({
   /** Admins only — deleting is irreversible and shared dashboards have read-only visitors. */
   canDelete?: boolean;
   onDelete?: (ids: string[]) => void;
+  /** Re-publish a bug whose server snapshot never landed — wired to the "Not synced" badge. */
+  onRetrySync?: (id: string) => Promise<void>;
 }) {
   const navigate = useNavigate();
   // Filters + search live in the URL so any filtered view is shareable.
@@ -101,6 +105,8 @@ export function BugsPage({
         return bugs.filter((b) => b.status === "in_progress");
       case "resolved":
         return bugs.filter((b) => b.status === "resolved");
+      case "reported":
+        return me ? bugs.filter((b) => b.reporter?.id === me.id) : [];
       case "mine":
         return me ? bugs.filter((b) => b.assignee?.id === me.id) : [];
       default:
@@ -110,7 +116,7 @@ export function BugsPage({
 
   // Status chips only exist on "All sessions" — sidebar views already constrain status, and two
   // competing status filters could contradict each other.
-  const statusChipsVisible = view === "all";
+  const statusChipsVisible = view === "all" || view === "reported";
   const effectiveStatus = statusChipsVisible ? statusFilter : "all";
 
   const query = search.trim().toLowerCase();
@@ -383,6 +389,9 @@ export function BugsPage({
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
                 </button>
+                {isUnsynced(bug) && (
+                  <SyncBadge bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />
+                )}
                 <InlineStatus status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
                 <CopyLink path={`/session/${bug.humanId}`} label={bug.title} />
               </li>

@@ -1,8 +1,16 @@
 // ABOUTME: Initiatives — shared units of dev work QA files bugs against. API client,
 // ABOUTME: status metadata, and the metric math (quality score + dev scoreboard).
 import type { Bug, Reporter } from "./types";
+import { authToken } from "./auth";
 
 const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
+
+/** Bearer token for the write endpoints — reads stay open. Sent when present; a missing token
+ *  still sends the request and lets the server's 401 surface in the normal error path. */
+function authHeaders(): Record<string, string> {
+  const token = authToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export type InitiativeStatus = "in_qa" | "shipped" | "archived";
 
@@ -46,7 +54,7 @@ export async function createInitiative(input: {
 }): Promise<Initiative> {
   const res = await fetch(`${BASE}/api/initiatives`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       name: input.name,
       description: input.description ?? "",
@@ -67,7 +75,7 @@ export async function updateInitiative(
   if (patch.owner) body.owner = { id: patch.owner.id, name: patch.owner.name, email: patch.owner.email };
   const res = await fetch(`${BASE}/api/initiatives/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) await fail(res, `Update failed (${res.status})`);

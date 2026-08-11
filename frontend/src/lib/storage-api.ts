@@ -23,9 +23,18 @@ const jsonCache = new Map<string, Promise<unknown>>();
 export function fetchStoredJson<T>(fileId: string): Promise<T> {
   let pending = jsonCache.get(fileId);
   if (!pending) {
-    pending = fetch(storageDownloadUrl(fileId)).then((res) => {
+    pending = fetch(storageDownloadUrl(fileId)).then(async (res) => {
       if (!res.ok) throw new Error(`download failed: ${res.status}`);
-      return res.json();
+      // The extension gzips JSON artefacts before upload (a capture's evidence goes from tens of
+      // megabytes to under one on the wire). Detect it from the two magic bytes rather than a
+      // filename or header, so files uploaded before that change keep working unchanged.
+      const buf = await res.arrayBuffer();
+      const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+      if (head[0] === 0x1f && head[1] === 0x8b) {
+        const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+        return JSON.parse(await new Response(stream).text());
+      }
+      return JSON.parse(new TextDecoder().decode(buf));
     });
     // A failed fetch shouldn't poison the cache — allow a retry on next mount.
     pending.catch(() => jsonCache.delete(fileId));

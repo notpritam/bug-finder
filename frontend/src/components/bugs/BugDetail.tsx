@@ -16,6 +16,7 @@ import {
 } from "@/components/common/bits";
 import { ReplayPlayer } from "@/components/replay/ReplayPlayer";
 import { useReplayClock } from "@/components/replay/useReplayClock";
+import { SyncBanner } from "@/components/common/SyncBadge";
 import { InspectorRail } from "./InspectorRail";
 import { EditableText } from "./EditableText";
 
@@ -30,6 +31,7 @@ export function BugDetail({
   onAssigneeChange,
   onComment,
   onEdit,
+  onRetrySync,
 }: {
   bug: Bug;
   me: Reporter | null;
@@ -44,6 +46,8 @@ export function BugDetail({
   onComment: (id: string, body: string) => void;
   /** Free-text edits. Any signed-in user may make them; history records each field. */
   onEdit: (id: string, patch: Partial<Bug>) => void;
+  /** Re-publish this bug's server snapshot — wired to the "Not synced" banner's Retry. */
+  onRetrySync?: (id: string) => Promise<void>;
 }) {
   const navigate = useNavigate();
   const [linkCopied, setLinkCopied] = useState(false);
@@ -181,6 +185,9 @@ export function BugDetail({
           <ArrowLeft className="size-4" /> All sessions
           <kbd className="ml-1 rounded border border-border/60 bg-muted px-1 font-mono text-[9.5px]">esc</kbd>
         </button>
+
+        {/* A bug that never reached the server is a loud, actionable state — not a footnote. */}
+        <SyncBanner bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />
 
         {/* Header */}
         <header className="soft-fade space-y-2">

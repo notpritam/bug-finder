@@ -31,8 +31,16 @@ export const idb = {
   getAll<T>(store: "drafts" | "bugs"): Promise<T[]> {
     return tx<T[]>(store, "readonly", (s) => s.getAll() as IDBRequest<T[]>).catch(() => []);
   },
+  get<T>(store: "drafts" | "bugs", id: string): Promise<T | undefined> {
+    return tx<T | undefined>(store, "readonly", (s) => s.get(id) as IDBRequest<T | undefined>).catch(() => undefined);
+  },
   put(store: "drafts" | "bugs", value: unknown): Promise<unknown> {
     return tx(store, "readwrite", (s) => s.put(value)).catch(() => undefined);
+  },
+  /** Like put, but rejects on failure — for writes whose durability something else depends on
+   *  (e.g. acknowledging the extension's hand-off only after the capture is actually stored). */
+  putStrict(store: "drafts" | "bugs", value: unknown): Promise<unknown> {
+    return tx(store, "readwrite", (s) => s.put(value));
   },
   delete(store: "drafts" | "bugs", id: string): Promise<unknown> {
     return tx(store, "readwrite", (s) => s.delete(id)).catch(() => undefined);

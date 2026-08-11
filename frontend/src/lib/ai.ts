@@ -1,6 +1,7 @@
 // ABOUTME: Client for the /api/ai/draft-fill backend endpoint (Claude Sonnet 4.5).
 // ABOUTME: Turns a captured draft's raw evidence into suggested title/description/tags/etc.
 import type { Draft, Reporter } from "./types";
+import { authToken } from "./auth";
 
 const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
 
@@ -69,9 +70,15 @@ export async function aiDraftFill(opts: {
     },
   };
 
+  // The endpoint spends money on every call, so the backend requires a signed-in caller. Same
+  // bearer token the publish/allocate/delete writes send.
+  const token = authToken();
   const res = await fetch(`${BASE}/api/ai/draft-fill`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

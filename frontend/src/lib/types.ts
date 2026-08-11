@@ -41,6 +41,9 @@ export interface ConsoleEntry {
   t: number;
   level: "log" | "info" | "warn" | "error" | "debug";
   text: string;
+  /** Component/call stack captured as a trailing console arg (React warnings, thrown errors) —
+   *  kept separate from `text` so views can collapse it and agents can grep it. */
+  stack?: string;
 }
 
 /** One captured network call, synced to the replay clock. */
@@ -117,7 +120,7 @@ export type ReplayEvent =
   | { t: number; kind: "scroll"; y: number }
   | { t: number; kind: "input"; field: string; value: string }
   | { t: number; kind: "nav"; url: string }
-  | { t: number; kind: "error"; message: string };
+  | { t: number; kind: "error"; message: string; stack?: string };
 
 /** One entry in a bug's history — created / status change / comment / assignment. */
 export interface BugEvent {
@@ -134,7 +137,7 @@ export interface BugEvent {
 }
 
 /** A filed bug ticket, as submitted by the capture extension. */
-export interface Bug {
+export interface Bug extends DeepCapture {
   id: string;
   humanId: string;
   title: string;
@@ -172,6 +175,16 @@ export interface Bug {
   jobId?: string;
   /** The app-under-test account used while reproducing. */
   credentials?: TestCredentials;
+  /** Layout-debugger evidence auto-pulled from the page at capture stop, when the page exposed
+   *  window.__layoutDebug / __rowLedger: { snapshot: { viewport, virtualRows, virtualRowIssues },
+   *  rowLedgerTail }. Opaque here — the inspector and the backend summary render it. */
+  layoutDebug?: unknown;
+  /** App build identity read off the page at capture stop: version/build globals
+   *  (__APP_VERSION__ …), version/build meta tags, and loaded script chunk URLs. */
+  captureSchemaVersion?: number;
+  appInfo?: unknown;
+  /** Opt-in app-state snapshot (window.__DEBUG_STATE__), pre-serialized by the extension. */
+  debugState?: string;
   /** Real rrweb recording (pixel-accurate replay) — present on bugs captured by the extension.
    *  When set, the player renders the rrweb Replayer instead of the wireframe simulation. */
   rrweb?: unknown[];
@@ -192,11 +205,21 @@ export interface Bug {
   /** Evidence gathered before recording started carries a negative `t`, reaching back this far. */
   preRollMs?: number;
   perf?: PagePerf;
+  /** Whether the server snapshot (what agents and other people read) matches this row.
+   *  Persisted locally so a failed publish survives reload and can be retried:
+   *  - "synced": the server accepted the last publish.
+   *  - "local-only": no backend configured, or the browser was offline — nothing rejected it,
+   *    it just never got there.
+   *  - "failed": the server refused it (or the evidence upload failed). Needs a retry.
+   *  Absent on rows filed before this field existed (treated as synced — they predate it). */
+  syncState?: "synced" | "local-only" | "failed";
+  /** Why the last publish failed — shown next to the retry control. */
+  syncError?: string;
 }
 
 /** A captured session awaiting review — what the extension hands off before a bug exists.
  *  The reporter reviews the replay, trims it, adds flags, fills the form, then submits. */
-export interface Draft {
+export interface Draft extends DeepCapture {
   id: string;
   /** Who recorded it — drafts are personal until submitted. */
   reporter?: Reporter;
@@ -224,6 +247,16 @@ export interface Draft {
   /** Low-bitrate tab video recorded alongside the DOM stream. */
   videoFileId?: string;
   shots?: Screenshot[];
+  /** Layout-debugger evidence from the page under test (see Bug.layoutDebug). */
+  layoutDebug?: unknown;
+  /** App build identity from the page under test (see Bug.appInfo). */
+  appInfo?: unknown;
+  /** Which extension capture schema produced this draft. A browser keeps running the OLD
+   *  content script until the unpacked extension is reloaded, so without this a missing field
+   *  and a stale extension are indistinguishable in the stored record. */
+  captureSchemaVersion?: number;
+  /** Opt-in app-state snapshot from the page under test (see Bug.debugState). */
+  debugState?: string;
   /** Kept window of the recording — events outside are dropped on submit. */
   trim?: { in: number; out: number };
   title?: string;
@@ -238,4 +271,63 @@ export interface Draft {
   credentials?: TestCredentials;
   /** Suggested assignee (persisted so the AI suggestion survives page reload). */
   assigneeId?: string | null;
+}
+
+/** Deep capture — what the extension collects through the Chrome DevTools Protocol and by
+ *  instrumenting the page's own stores (capture schema 5+). Shared by Bug and Draft so a new
+ *  field is declared once rather than twice.
+ *
+ *  Typed as `unknown` on purpose: the extension owns these shapes, and a field it adds has to
+ *  reach the stored record even when this file has not caught up. Every one of these was being
+ *  silently discarded before — see pickDeepCapture in lib/drafts.ts, which is the only place
+ *  they are copied. */
+export interface DeepCapture {
+  /** State containers found in the page, each with the baseline its changes diff against. */
+  stateSources?: unknown[];
+  /** Ordered state transitions as RFC 6902 patches. Replay against the baselines above to
+   *  reconstruct state at any point — which is why trimming must never clip them: like rrweb,
+   *  the stream is meaningless without its start. */
+  stateChanges?: unknown[];
+  /** Storage-service file id of the HAR: the network waterfall, wire headers and bodies. */
+  harFileId?: string;
+  /** Where the HAR was written under the reporter's Downloads. */
+  harSavedAs?: string;
+  /** Request count in that HAR, inline so a summary need not fetch the file. */
+  harEntryCount?: number;
+  /** Every cookie including httpOnly ones, which the page itself can never read. */
+  cookiesAtStart?: unknown[];
+  cookiesAtStop?: unknown[];
+  cookieChanges?: unknown[];
+  /** localStorage/sessionStorage by origin at start and stop, plus the writes between. */
+  storageAtStart?: unknown;
+  storageAtStop?: unknown;
+  storageChanges?: unknown[];
+  /** IndexedDB contents and the Cache Storage entry listing, both taken at stop. */
+  indexedDb?: unknown;
+  cacheStorage?: unknown;
+  /** CORS blocks, CSP violations, mixed content, deprecations — none of which reach console.*,
+   *  so before schema 5 they were invisible to a bug report entirely. */
+  browserLog?: unknown[];
+  /** Whether the debugger attached, and why not when it did not. Without this, a capture that
+   *  is thin because CDP never attached looks exactly like a page that was quiet. */
+  cdp?: { attached: boolean; reason?: string; bodyBytesDropped?: number };
+  /** Set on the server copy only. The heavy evidence (network, console, replay, state, cookies,
+   *  storage, browser log, inline rrweb…) is ALWAYS uploaded as one JSON file and the fields
+   *  removed, so the Mongo document stays light regardless of capture size; this is that file's
+   *  id. The row in this browser's IndexedDB always keeps everything inline. */
+  evidenceFileId?: string;
+  /** Counts kept inline when the evidence was offloaded, so a summary stays truthful without
+   *  fetching the file. One entry per offloaded list; all optional so old rows still parse. */
+  evidenceCounts?: {
+    stateSources?: number;
+    stateChanges?: number;
+    cookies?: number;
+    cookieChanges?: number;
+    browserLog?: number;
+    storageChanges?: number;
+    network?: number;
+    console?: number;
+    replay?: number;
+    rrwebEvents?: number;
+  };
 }

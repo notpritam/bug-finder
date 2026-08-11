@@ -9,16 +9,19 @@ import {
   useRef,
   useState,
   type PointerEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
   Flag,
   Maximize2,
   Minimize2,
+  MonitorPlay,
   Pause,
   Play,
   RotateCcw,
   RotateCw,
+  Video,
 } from "lucide-react";
 import type { Bug } from "@/lib/types";
 import { fetchStoredJson } from "@/lib/storage-api";
@@ -136,11 +139,13 @@ export function ReplayPlayer({
   return (
     <div
       ref={containerRef}
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card [&:fullscreen]:rounded-none"
+      className="@container flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-card [&:fullscreen]:rounded-none"
     >
-      {/* Browser chrome */}
+      {/* Browser chrome. The DOM/Video switch sits here beside Fullscreen rather than floating
+          over the stage: as an overlay it covered the recorded page's own top-right corner, which
+          is exactly where apps put their menus — so the switch hid the thing being reported. */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 bg-muted/60 px-3">
-        <span className="flex gap-1.5">
+        <span className="flex shrink-0 gap-1.5">
           <span className="size-2.5 rounded-full bg-[#f87171]" />
           <span className="size-2.5 rounded-full bg-[#fbbf24]" />
           <span className="size-2.5 rounded-full bg-[#34d399]" />
@@ -148,11 +153,35 @@ export function ReplayPlayer({
         <div className="mx-auto flex h-6 min-w-0 max-w-[70%] flex-1 items-center justify-center gap-1.5 rounded-md bg-card px-3 text-[11px] text-muted-foreground shadow-sm">
           <span className="truncate font-mono">{currentUrl.replace(/^https?:\/\//, "")}</span>
         </div>
+        {/* Both sides are always shown, so it is never ambiguous which of the two you are looking
+            at. The unavailable one stays disabled and its tooltip says why. */}
+        {hasDom || hasVideo ? (
+          <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-border/60 bg-card p-0.5">
+            <ViewToggle
+              active={mode === "dom"}
+              disabled={!hasDom}
+              onClick={() => setShowVideo(false)}
+              icon={<MonitorPlay className="size-3" />}
+              label="DOM replay"
+              title={hasDom ? "Reconstructed DOM — sharp at any zoom, and inspectable" : "No DOM recording on this capture"}
+            />
+            <ViewToggle
+              active={mode === "video"}
+              disabled={!hasVideo}
+              onClick={() => setShowVideo(true)}
+              icon={<Video className="size-3" />}
+              label="Video"
+              title={hasVideo ? "The literal footage — shows canvas, video and cross-origin frames" : "No video on this capture"}
+            />
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={toggleFullscreen}
-          className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-label={fullscreen ? "Exit fullscreen" : "Expand player to fullscreen"}
+          data-testid="player-fullscreen-btn"
         >
           {fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
         </button>
@@ -184,38 +213,6 @@ export function ReplayPlayer({
             )}
           </div>
         )}
-        {/* Always visible once there is anything to play, so it is never ambiguous which of the
-            two you are looking at. The unavailable side stays disabled and says why. */}
-        {hasDom || hasVideo ? (
-          <div className="absolute right-2 top-2 z-40 flex overflow-hidden rounded-md border border-white/20 text-[10px] font-semibold shadow-sm">
-            <button
-              type="button"
-              disabled={!hasDom}
-              onClick={() => setShowVideo(false)}
-              className={cn(
-                "px-2 py-1 transition-colors",
-                mode === "dom" ? "bg-white text-zinc-900" : "bg-zinc-900/75 text-zinc-200 hover:bg-zinc-900/90",
-                !hasDom && "cursor-not-allowed opacity-40 hover:bg-zinc-900/75",
-              )}
-              title={hasDom ? "Reconstructed DOM — sharp at any zoom, and inspectable" : "No DOM recording on this capture"}
-            >
-              DOM replay
-            </button>
-            <button
-              type="button"
-              disabled={!hasVideo}
-              onClick={() => setShowVideo(true)}
-              className={cn(
-                "px-2 py-1 transition-colors",
-                mode === "video" ? "bg-white text-zinc-900" : "bg-zinc-900/75 text-zinc-200 hover:bg-zinc-900/90",
-                !hasVideo && "cursor-not-allowed opacity-40 hover:bg-zinc-900/75",
-              )}
-              title={hasVideo ? "The literal footage — shows canvas, video and cross-origin frames" : "No video on this capture"}
-            >
-              Video
-            </button>
-          </div>
-        ) : null}
         {!playing && t === 0 && (
           <button
             type="button"
@@ -290,6 +287,45 @@ export function ReplayPlayer({
         </button>
       </div>
     </div>
+  );
+}
+
+/** One side of the DOM/Video switch in the browser chrome. The label collapses to its icon in a
+ *  narrow player so the URL keeps its room; the tooltip carries the full meaning either way. */
+function ViewToggle({
+  active,
+  disabled,
+  onClick,
+  icon,
+  label,
+  title,
+}: {
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      aria-label={label}
+      aria-pressed={active}
+      className={cn(
+        "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground",
+      )}
+    >
+      {icon}
+      <span className="hidden @[520px]:inline">{label}</span>
+    </button>
   );
 }
 

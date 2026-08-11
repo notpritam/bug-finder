@@ -1,63 +1,62 @@
-// ABOUTME: Local account system (registry + session in localStorage) until a real backend
-// ABOUTME: exists. Passwords are SHA-256 hashed; the session snapshot is what the extension reads.
+// ABOUTME: Accounts, served by the backend. Previously a localStorage-only registry: accounts
+// ABOUTME: existed per-browser (so a password "worked" on one machine and nowhere else),
+// ABOUTME: passwords were unsalted SHA-256, and admin was decided by client code anyone could
+// ABOUTME: edit. The session snapshot in localStorage stays because the extension bridge reads it
+// ABOUTME: to attribute captures - it is now a cache of the server's answer, not the truth.
 import type { Role } from "./meta";
 import type { Reporter } from "./types";
 
 export interface AuthUser extends Reporter {
   role: Role;
   team: string;
+  isAdmin?: boolean;
 }
 
 /** Stand-in reporter for submissions made without an account. */
 export const ANONYMOUS: Reporter = { id: "anon", name: "Anonymous", email: "" };
 
-/** Roles don't exist server-side yet, so admin is an allowlist for now. Deleting is
- *  irreversible and a shared dashboard is read by people who shouldn't have it — when real
- *  user types land, this is the one function that has to change. */
-const ADMIN_EMAILS = new Set(["pritam@emergent.sh", "ankit@emergent.sh"]);
-
-export function isAdmin(user: { email?: string } | null | undefined): boolean {
-  return Boolean(user?.email && ADMIN_EMAILS.has(user.email.trim().toLowerCase()));
-}
-
-interface StoredUser extends AuthUser {
-  passwordHash: string;
-}
-
-const USERS_KEY = "bf.users";
-/** Session snapshot — also read by the extension's bridge content script to gate recording. */
+const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
 const SESSION_KEY = "bf.session-user";
+const TOKEN_KEY = "bf.session-token";
 
-async function hash(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/** Admin comes from the server now, which the client cannot edit. This local read only hides
+ *  controls; the server is what actually decides. */
+export function isAdmin(user: { isAdmin?: boolean } | null | undefined): boolean {
+  return Boolean(user?.isAdmin);
 }
 
-function loadUsers(): StoredUser[] {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
+export function authToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
-function saveUsers(users: StoredUser[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function setSession(user: AuthUser | null) {
+function setSession(user: AuthUser | null, token?: string | null) {
   if (user) localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   else localStorage.removeItem(SESSION_KEY);
-  // Nudge the extension bridge (when the dashboard tab hosts one) to re-sync.
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else if (token === null) localStorage.removeItem(TOKEN_KEY);
   window.postMessage({ source: "bugfinder-dashboard", type: "user-sync" }, "*");
 }
 
+/** The cached session, for a synchronous first paint. verifySession() confirms it against the
+ *  server afterwards, so a revoked or expired token cannot keep someone signed in forever. */
 export function loadSession(): AuthUser | null {
   try {
     return JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null");
   } catch {
     return null;
   }
+}
+
+async function call<T>(path: string, body: unknown): Promise<T> {
+  if (!BASE) throw new Error("Accounts are unavailable: the dashboard has no backend configured.");
+  const res = await fetch(BASE + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { detail?: string } & T;
+  if (!res.ok) throw new Error(data.detail || "Something went wrong. Try again.");
+  return data;
 }
 
 export async function signUp(input: {
@@ -67,42 +66,59 @@ export async function signUp(input: {
   role: Role;
   team: string;
 }): Promise<AuthUser> {
-  const email = input.email.trim().toLowerCase();
-  if (!input.name.trim()) throw new Error("Name is required.");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email address.");
-  if (input.password.length < 6) throw new Error("Password needs at least 6 characters.");
-  const users = loadUsers();
-  if (users.some((u) => u.email === email)) throw new Error("An account with this email already exists — sign in instead.");
-  const user: StoredUser = {
-    id: `u-${Date.now().toString(36)}`,
+  if (input.password.length < 8) throw new Error("Password needs at least 8 characters.");
+  const { token, user } = await call<{ token: string; user: AuthUser }>("/api/auth/register", {
     name: input.name.trim(),
-    email,
+    email: input.email.trim().toLowerCase(),
+    password: input.password,
     role: input.role,
     team: input.team,
-    passwordHash: await hash(input.password),
-  };
-  saveUsers([...users, user]);
-  const { passwordHash: _ph, ...session } = user;
-  setSession(session);
-  return session;
+  });
+  setSession(user, token);
+  return user;
 }
 
 export async function signIn(email: string, password: string): Promise<AuthUser> {
-  const users = loadUsers();
-  const user = users.find((u) => u.email === email.trim().toLowerCase());
-  if (!user || user.passwordHash !== (await hash(password))) {
-    throw new Error("Wrong email or password.");
-  }
-  const { passwordHash: _ph, ...session } = user;
-  setSession(session);
-  return session;
+  const { token, user } = await call<{ token: string; user: AuthUser }>("/api/auth/login", {
+    email: email.trim().toLowerCase(),
+    password,
+  });
+  setSession(user, token);
+  return user;
 }
 
 export function signOut() {
-  setSession(null);
+  setSession(null, null);
 }
 
-/** Everyone with an account — assignee options alongside the demo roster. */
-export function listAccountUsers(): AuthUser[] {
-  return loadUsers().map(({ passwordHash: _ph, ...u }) => u);
+/** Confirm the cached session is still real. Clears it when the server disowns the token, so the
+ *  UI never presents someone as signed in to an account that no longer exists. */
+export async function verifySession(): Promise<AuthUser | null> {
+  const token = authToken();
+  if (!token || !BASE) return null;
+  try {
+    const res = await fetch(BASE + "/api/auth/me", { headers: { Authorization: "Bearer " + token } });
+    if (!res.ok) {
+      setSession(null, null);
+      return null;
+    }
+    const user = (await res.json()) as AuthUser;
+    setSession(user, token);
+    return user;
+  } catch {
+    // Offline: keep the cached session rather than signing someone out over a flaky network.
+    return loadSession();
+  }
+}
+
+/** Everyone with an account - assignee options. */
+export async function listAccountUsers(): Promise<AuthUser[]> {
+  const token = authToken();
+  if (!token || !BASE) return [];
+  try {
+    const res = await fetch(BASE + "/api/auth/users", { headers: { Authorization: "Bearer " + token } });
+    return res.ok ? ((await res.json()) as AuthUser[]) : [];
+  } catch {
+    return [];
+  }
 }

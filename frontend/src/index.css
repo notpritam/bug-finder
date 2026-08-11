@@ -266,6 +266,16 @@
   .scroll-thin::-webkit-scrollbar-track {
     background: transparent;
   }
+
+  /* Scrolls, but shows no bar. For strips where a 9px scrollbar would eat the row it sits in —
+     the inspector's tab rail. Overflow is signalled by the edge fade on the wrapper instead. */
+  .scroll-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scroll-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Severity pills — soft, tinted, sentence-case */
