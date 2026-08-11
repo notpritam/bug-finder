@@ -35,6 +35,8 @@ export function SessionFilters({
   tags,
   onChange,
   onClear,
+  showDismissed,
+  onToggleDismissed,
 }: {
   values: FilterValues;
   /** Sidebar views already constrain status; two status filters could contradict each other. */
@@ -47,6 +49,11 @@ export function SessionFilters({
   tags: { tag: string; count: number }[];
   onChange: (key: keyof FilterValues, value: string) => void;
   onClear: () => void;
+  /** "Not a bug" is a verdict, not work, so it is out of the list by default. This is how you
+   *  get it back — a toggle rather than a filter value, because it changes what the list means
+   *  rather than narrowing it. */
+  showDismissed: boolean;
+  onToggleDismissed: (v: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -133,6 +140,16 @@ export function SessionFilters({
               options={TIME_RANGES.map((t) => ({ value: t.value, label: t.label }))}
               onPick={(v) => onChange("since", v)}
             />
+            <label className="mt-1 flex cursor-pointer items-center gap-2 rounded-md border-t border-border/60 px-2 pb-1 pt-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+              <input
+                type="checkbox"
+                className="size-3.5 cursor-pointer accent-primary"
+                checked={showDismissed}
+                onChange={(e) => onToggleDismissed(e.target.checked)}
+                data-testid="sessions-show-dismissed"
+              />
+              Show “Not a bug”
+            </label>
             {active.length > 0 && (
               <button
                 type="button"

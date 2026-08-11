@@ -56,6 +56,9 @@ export function BugsPage({
   // Days, not a timestamp: a shared link that said "since 3pm Tuesday" would mean something
   // different every time it was opened.
   const sinceFilter = params.get("since") ?? "all";
+  // Dismissed sessions are hidden unless asked for. In the URL like every other filter, so a
+  // link that shows them keeps showing them for whoever opens it.
+  const showDismissed = params.get("dismissed") === "1";
   const search = params.get("q") ?? "";
   const setParam = (key: string, value: string) => {
     setParams(
@@ -166,9 +169,20 @@ export function BugsPage({
     [scoped, severityFilter, reporterFilter, cutoff, tagFilter, query],
   );
   const visible = useMemo(
-    () => preStatus.filter((b) => effectiveStatus === "all" || b.status === effectiveStatus),
-    [preStatus, effectiveStatus],
+    () =>
+      preStatus.filter(
+        (b) =>
+          (effectiveStatus === "all" || b.status === effectiveStatus) &&
+          // A session ruled "not a bug" has been answered. Left in, it sits in the queue forever
+          // and every count reads higher than the work that actually remains. Asking for that
+          // status explicitly still shows them.
+          (showDismissed || effectiveStatus === "not_a_bug" || b.status !== "not_a_bug"),
+      ),
+    [preStatus, effectiveStatus, showDismissed],
   );
+  // Only meaningful on the unfiltered view: any other status filter excludes them anyway.
+  const dismissedHidden =
+    showDismissed || effectiveStatus !== "all" ? 0 : preStatus.filter((b) => b.status === "not_a_bug").length;
 
   const statusCounts = useMemo(() => {
     const counts = new Map<BugStatus, number>();
@@ -256,6 +270,8 @@ export function BugsPage({
               setActiveIndex(-1);
             }}
             onClear={clearFilters}
+            showDismissed={showDismissed}
+            onToggleDismissed={(v) => setParam("dismissed", v ? "1" : "")}
           />
           <LayoutToggle value={layout} onChange={setLayoutMode} />
         </div>
@@ -266,6 +282,26 @@ export function BugsPage({
               ? `${scoped.length} ${scoped.length === 1 ? "bug" : "bugs"}`
               : `${visible.length} of ${scoped.length}`}
           </p>
+          {/* Never silently drop rows: say how many are held back and make the label reveal them. */}
+          {dismissedHidden > 0 && (
+            <button
+              type="button"
+              onClick={() => setParam("dismissed", "1")}
+              className="text-[11.5px] text-muted-foreground/80 underline-offset-2 transition-colors hover:text-foreground hover:underline"
+              title="Show sessions marked Not a bug"
+            >
+              {dismissedHidden} not a bug · show
+            </button>
+          )}
+          {showDismissed && (
+            <button
+              type="button"
+              onClick={() => setParam("dismissed", "")}
+              className="text-[11.5px] text-muted-foreground/80 underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              hide “not a bug”
+            </button>
+          )}
           {statusChipsVisible && statusCounts.length > 1 && (
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               {statusCounts.map(({ status, count }) => (
@@ -448,8 +484,10 @@ export function BugsPage({
 /** Native select styled as a chip — change status from the list without opening the bug. */
 function InlineStatus({ status, onChange }: { status: BugStatus; onChange: (s: BugStatus) => void }) {
   return (
-    <label className="relative inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2 py-1 text-[11.5px] font-medium transition-colors hover:bg-accent">
-      <span className="size-2 rounded-full" style={{ background: BUG_STATUS_META[status].color }} />
+    // Sized for a pointer: this is the control people reach for most on this page, and it was
+    // a 22px-tall sliver of text.
+    <label className="relative inline-flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-border/60 bg-card px-3 text-[12.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent">
+      <span className="size-2.5 rounded-full" style={{ background: BUG_STATUS_META[status].color }} />
       {BUG_STATUS_META[status].label}
       <select
         value={status}

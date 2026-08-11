@@ -35,17 +35,22 @@ export type SidebarView =
   | "insights"
   | "admin";
 
+/** A session ruled "not a bug" is answered, and the list hides it by default. These badges have to
+ *  agree with what the list shows, or the first thing someone does is count the rows and find one
+ *  missing. The status-specific views below are unaffected — they already exclude it by definition. */
+const live = (bugs: Bug[]) => bugs.filter((b) => b.status !== "not_a_bug");
+
 const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[], meId: string) => number }[] = [
   // "Sessions", not "bugs": a capture is a recorded session, and plenty are worth keeping
   // without being defects — regressions, questions, things to show someone.
-  { key: "all", label: "All sessions", icon: <Inbox className="size-[17px]" />, count: (b) => b.length },
+  { key: "all", label: "All sessions", icon: <Inbox className="size-[17px]" />, count: (b) => live(b).length },
   { key: "open", label: "Open", icon: <CircleDot className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "open").length },
   { key: "in_progress", label: "In progress", icon: <Loader2 className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "in_progress").length },
   { key: "resolved", label: "Resolved", icon: <ShieldCheck className="size-[17px]" />, count: (b) => b.filter((x) => x.status === "resolved").length },
   // Reported-by-me and assigned-to-me are different questions — "what did I file" vs "what is
   // waiting on me" — and collapsing them hid one of the two.
-  { key: "reported", label: "My sessions", icon: <UserRound className="size-[17px]" />, count: (b, meId) => b.filter((x) => x.reporter?.id === meId).length },
-  { key: "mine", label: "Assigned to me", icon: <UserCheck className="size-[17px]" />, count: (b, meId) => b.filter((x) => x.assignee?.id === meId).length },
+  { key: "reported", label: "My sessions", icon: <UserRound className="size-[17px]" />, count: (b, meId) => live(b).filter((x) => x.reporter?.id === meId).length },
+  { key: "mine", label: "Assigned to me", icon: <UserCheck className="size-[17px]" />, count: (b, meId) => live(b).filter((x) => x.assignee?.id === meId).length },
 ];
 
 export function Sidebar({
