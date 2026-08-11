@@ -43,6 +43,25 @@ import { InsightsPage } from "@/components/insights/InsightsPage";
 import { AdminPage } from "@/components/admin/AdminPage";
 import { listInitiatives, type Initiative } from "@/lib/initiatives";
 
+/** A list row from the server is deliberately light: the capture arrays are projected out, and
+ *  any field never written is simply absent. The UI types it as a Bug and reads `.tags`, `.events`
+ *  and `.console` straight off it, so give every one of them a floor before it reaches React —
+ *  otherwise a session filed by a teammate takes the whole list down with it. */
+function fromServer(row: Bug): Bug {
+  return {
+    ...row,
+    tags: row.tags ?? [],
+    events: row.events ?? [],
+    console: row.console ?? [],
+    network: row.network ?? [],
+    replay: row.replay ?? [],
+    markers: row.markers ?? [],
+    shots: row.shots ?? [],
+    pickedElements: row.pickedElements ?? [],
+    visits: row.visits ?? [],
+  };
+}
+
 /** What the server owns once a session is filed — the collaborative surface. Everything else on
  *  a bug is capture evidence, which no one edits and which the shared list does not carry. */
 const SHARED_FIELDS = [
@@ -160,7 +179,7 @@ function Shell({
         for (const r of remote) {
           const local = byHuman.get(r.humanId);
           if (!local) {
-            byHuman.set(r.humanId, r);
+            byHuman.set(r.humanId, fromServer(r));
             continue;
           }
           const shared: Partial<Bug> = {};

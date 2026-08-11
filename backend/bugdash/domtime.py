@@ -6,6 +6,7 @@
 # exactly that subset (mutations + input value flips — the state-bearing events). It does NOT
 # apply scroll/viewport/media events: they don't change the tree an agent greps.
 import asyncio
+import gzip
 import json
 import os
 import re
@@ -37,7 +38,19 @@ def _fetch_json(url: str) -> Any:
         data = res.read(_FETCH_CAP_BYTES + 1)
         if len(data) > _FETCH_CAP_BYTES:
             raise HTTPException(413, "recording too large to rebuild server-side")
-        return json.loads(data)
+    # The extension gzips JSON artefacts before upload. Detect it from the magic bytes rather than
+    # a filename or a Content-Encoding header — the storage service serves the bytes verbatim as
+    # application/octet-stream, so nothing downstream decompresses for us. Without this every
+    # recording uploaded since gzipping landed reached json.loads as binary and 500ed the endpoint,
+    # while the replay player and the evidence reader (which both already sniff) kept working —
+    # so DOM time-travel looked broken for new bugs only.
+    if data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
+        # The cap protects memory, and decompression is where memory grows: a small gzip can
+        # expand into hundreds of megabytes. Re-check against the real size.
+        if len(data) > _FETCH_CAP_BYTES:
+            raise HTTPException(413, "recording too large to rebuild server-side")
+    return json.loads(data)
 
 
 async def resolve_rrweb_events(doc: dict[str, Any]) -> list[dict[str, Any]]:

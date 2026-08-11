@@ -336,7 +336,10 @@ export function BugsPage({
             </li>
           ) : null}
           {visible.map((bug, i) => {
-            const errors = bug.console.filter((c) => c.level === "error").length;
+            // A row from the shared list has no console attached — it is projected out of the list
+            // response. Show nothing rather than a confident 0, and rather than throwing mid-render;
+            // the real count appears when the session is opened and its evidence is fetched.
+            const errors = bug.console ? bug.console.filter((c) => c.level === "error").length : 0;
             return (
               <li
                 key={bug.id}

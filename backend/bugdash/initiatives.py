@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .auth import require_admin, require_user
+from .auth import is_admin_doc, require_user
 from .core import initiatives_col, now_ms
 from .models import InitiativeCreate, InitiativePatch, VALID_INITIATIVE_STATUS
 
@@ -125,12 +125,16 @@ async def update_initiative(
 @router.delete("/api/initiatives/{initiative_id}")
 async def delete_initiative(
     initiative_id: str,
-    _admin: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
-    """Admin-only, unlike the owner-gated edit: the rows that most need deleting are QA leftovers
-    owned by accounts that were never real, so owner-gating would make them permanent."""
+    """Owner or admin. Two different needs meet here: you should be able to remove something you
+    created by mistake, and an admin has to be able to clear rows owned by accounts that were never
+    real — owner-gating alone would make those permanent, which is how nineteen QA leftovers
+    accumulated where a team's initiatives should be."""
     doc = await initiatives_col.find_one({"id": initiative_id})
     if not doc:
         raise HTTPException(404, f"initiative {initiative_id} not found")
+    if user["id"] != (doc.get("owner") or {}).get("id") and not is_admin_doc(user):
+        raise HTTPException(403, "only the initiative owner or an admin can delete it")
     await initiatives_col.delete_one({"id": initiative_id})
     return {"ok": True, "deleted": {"id": initiative_id, "name": doc.get("name")}}

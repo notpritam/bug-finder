@@ -144,6 +144,24 @@ async def me(user: dict[str, Any] = Depends(require_user)) -> PublicUser:
     return _public(user)
 
 
+@router.delete("/api/auth/me")
+async def delete_own_account(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    """Close your own account. Separate from the admin route because it needs no privilege: an
+    account nobody can remove without finding an admin is an account that accumulates — which is how
+    throwaway test logins ended up sitting in a real team's assignee list.
+
+    A bootstrap admin cannot leave this way; losing the only account that can grant admin, by an
+    unprivileged call, is not a recoverable mistake.
+    """
+    if user["email"] in BOOTSTRAP_ADMIN_EMAILS:
+        raise HTTPException(400, "This account is an admin in code and cannot delete itself.")
+    # Their reports stay — a session is a record of what happened. Work assigned to them must not
+    # keep pointing at an account that no longer exists.
+    await db["bugs"].update_many({"assignee.id": user["id"]}, {"$set": {"assignee": None}})
+    await users_col.delete_one({"id": user["id"]})
+    return {"ok": True, "deleted": {"id": user["id"], "email": user["email"]}}
+
+
 @router.get("/api/auth/users", response_model=list[PublicUser])
 async def list_users(_: dict[str, Any] = Depends(require_user)) -> list[PublicUser]:
     """Assignee options. Behind auth because it is a staff directory, however small."""
