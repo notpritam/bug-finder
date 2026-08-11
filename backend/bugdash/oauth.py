@@ -288,8 +288,10 @@ async def authorize_submit(
         "resource": resource or resource_uri(request),
         "expires_at": time.time() + CODE_TTL_S,
     })
+    # RFC 9207: `iss` must equal the issuer in our metadata by simple string comparison,
+    # so it carries the same /api prefix. The bare origin looks right and fails validation.
     sep = "&" if "?" in redirect_uri else "?"
-    out = f"{redirect_uri}{sep}code={urllib.parse.quote(code)}&iss={urllib.parse.quote(_origin(request), safe='')}"
+    out = f"{redirect_uri}{sep}code={urllib.parse.quote(code)}&iss={urllib.parse.quote(_base(request), safe='')}"
     if state:
         out += f"&state={urllib.parse.quote(state)}"
     return RedirectResponse(out, status_code=303)
