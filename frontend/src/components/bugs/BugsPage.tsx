@@ -13,6 +13,7 @@ import {
   BugSeverityPill,
   BugTagChips,
   UserAvatar,
+  isClosedStatus,
 } from "@/components/common/bits";
 import { isUnsynced, SyncBadge } from "@/components/common/SyncBadge";
 import { LayoutToggle, SessionFilters, type LayoutMode } from "./SessionFilters";
@@ -56,9 +57,9 @@ export function BugsPage({
   // Days, not a timestamp: a shared link that said "since 3pm Tuesday" would mean something
   // different every time it was opened.
   const sinceFilter = params.get("since") ?? "all";
-  // Dismissed sessions are hidden unless asked for. In the URL like every other filter, so a
+  // Finished sessions are hidden unless asked for. In the URL like every other filter, so a
   // link that shows them keeps showing them for whoever opens it.
-  const showDismissed = params.get("dismissed") === "1";
+  const showClosed = params.get("closed") === "1";
   const search = params.get("q") ?? "";
   const setParam = (key: string, value: string) => {
     setParams(
@@ -173,16 +174,16 @@ export function BugsPage({
       preStatus.filter(
         (b) =>
           (effectiveStatus === "all" || b.status === effectiveStatus) &&
-          // A session ruled "not a bug" has been answered. Left in, it sits in the queue forever
-          // and every count reads higher than the work that actually remains. Asking for that
-          // status explicitly still shows them.
-          (showDismissed || effectiveStatus === "not_a_bug" || b.status !== "not_a_bug"),
+          // Resolved, not-a-bug and won't-fix have all been answered. Left in, they sit in the
+          // queue forever and every count reads higher than the work that actually remains.
+          // Asking for one of those statuses explicitly still shows them.
+          (showClosed || isClosedStatus(effectiveStatus as BugStatus) || !isClosedStatus(b.status)),
       ),
-    [preStatus, effectiveStatus, showDismissed],
+    [preStatus, effectiveStatus, showClosed],
   );
   // Only meaningful on the unfiltered view: any other status filter excludes them anyway.
-  const dismissedHidden =
-    showDismissed || effectiveStatus !== "all" ? 0 : preStatus.filter((b) => b.status === "not_a_bug").length;
+  const closedHidden =
+    showClosed || effectiveStatus !== "all" ? 0 : preStatus.filter((b) => isClosedStatus(b.status)).length;
 
   const statusCounts = useMemo(() => {
     const counts = new Map<BugStatus, number>();
@@ -270,8 +271,8 @@ export function BugsPage({
               setActiveIndex(-1);
             }}
             onClear={clearFilters}
-            showDismissed={showDismissed}
-            onToggleDismissed={(v) => setParam("dismissed", v ? "1" : "")}
+            showClosed={showClosed}
+            onToggleClosed={(v) => setParam("closed", v ? "1" : "")}
           />
           <LayoutToggle value={layout} onChange={setLayoutMode} />
         </div>
@@ -283,23 +284,23 @@ export function BugsPage({
               : `${visible.length} of ${scoped.length}`}
           </p>
           {/* Never silently drop rows: say how many are held back and make the label reveal them. */}
-          {dismissedHidden > 0 && (
+          {closedHidden > 0 && (
             <button
               type="button"
-              onClick={() => setParam("dismissed", "1")}
+              onClick={() => setParam("closed", "1")}
               className="text-[11.5px] text-muted-foreground/80 underline-offset-2 transition-colors hover:text-foreground hover:underline"
-              title="Show sessions marked Not a bug"
+              title="Show resolved, not-a-bug and won’t-fix sessions"
             >
-              {dismissedHidden} not a bug · show
+              {closedHidden} done · show
             </button>
           )}
-          {showDismissed && (
+          {showClosed && (
             <button
               type="button"
-              onClick={() => setParam("dismissed", "")}
+              onClick={() => setParam("closed", "")}
               className="text-[11.5px] text-muted-foreground/80 underline-offset-2 transition-colors hover:text-foreground hover:underline"
             >
-              hide “not a bug”
+              hide completed
             </button>
           )}
           {statusChipsVisible && statusCounts.length > 1 && (

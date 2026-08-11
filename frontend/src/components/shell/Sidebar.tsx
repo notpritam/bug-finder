@@ -21,7 +21,7 @@ import { useState, type ReactNode } from "react";
 import type { Bug } from "@/lib/types";
 import type { AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { UserAvatar } from "@/components/common/bits";
+import { UserAvatar, isClosedStatus } from "@/components/common/bits";
 
 export type SidebarView =
   | "all"
@@ -35,10 +35,11 @@ export type SidebarView =
   | "insights"
   | "admin";
 
-/** A session ruled "not a bug" is answered, and the list hides it by default. These badges have to
- *  agree with what the list shows, or the first thing someone does is count the rows and find one
- *  missing. The status-specific views below are unaffected — they already exclude it by definition. */
-const live = (bugs: Bug[]) => bugs.filter((b) => b.status !== "not_a_bug");
+/** A resolved, dismissed or won't-fix session is answered, and the list hides it by default. These
+ *  badges have to agree with what the list shows, or the first thing someone does is count the rows
+ *  and find one missing. The status-specific views below are unaffected — they already narrow to a
+ *  single status by definition. */
+const live = (bugs: Bug[]) => bugs.filter((b) => !isClosedStatus(b.status));
 
 const VIEWS: { key: SidebarView; label: string; icon: ReactNode; count: (bugs: Bug[], meId: string) => number }[] = [
   // "Sessions", not "bugs": a capture is a recorded session, and plenty are worth keeping

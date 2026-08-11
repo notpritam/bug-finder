@@ -12,6 +12,15 @@ export const BUG_STATUS_META: Record<BugStatus, { label: string; color: string }
   wont_fix: { label: "Won't fix", color: "var(--status-wont_fix)" },
 };
 
+/** Statuses that mean the question has been answered — the fix landed, or it was ruled out.
+ *  None of them are work still owed, so the queue leaves them out by default and the initiative
+ *  list mutes them. Kept here rather than inline so the sidebar counts, the session list and the
+ *  initiative view cannot drift apart: the moment two of them disagree, someone counts the rows
+ *  and finds one missing. */
+export const BUG_STATUS_CLOSED: BugStatus[] = ["resolved", "not_a_bug", "wont_fix"];
+
+export const isClosedStatus = (status: BugStatus) => BUG_STATUS_CLOSED.includes(status);
+
 export const BUG_SEVERITY_ORDER: BugSeverity[] = ["critical", "high", "medium", "low"];
 
 export function BugStatusBadge({ status }: { status: BugStatus }) {

@@ -1,10 +1,10 @@
 // ABOUTME: One initiative — owner header, live quality metrics, its bug list, and the
 // ABOUTME: owner's lifecycle controls (edit, transfer, mark shipped, archive).
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CopyLink } from "@/components/common/CopyLink";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Pencil, Rocket, Ship } from "lucide-react";
-import type { Bug, Reporter } from "@/lib/types";
+import type { Bug, BugStatus, Reporter } from "@/lib/types";
 import type { AuthUser } from "@/lib/auth";
 import { listTeams } from "@/lib/meta";
 import {
@@ -15,7 +15,14 @@ import {
   type Initiative,
 } from "@/lib/initiatives";
 import { cn, formatDateTime, formatDuration, relativeTime } from "@/lib/utils";
-import { BugSeverityPill, BugStatusBadge, UserAvatar } from "@/components/common/bits";
+import {
+  BUG_STATUS_META,
+  BUG_STATUS_ORDER,
+  BugSeverityPill,
+  BugStatusBadge,
+  UserAvatar,
+  isClosedStatus,
+} from "@/components/common/bits";
 
 export function InitiativeDetail({
   initiative,
@@ -36,6 +43,26 @@ export function InitiativeDetail({
   const [error, setError] = useState<string | null>(null);
 
   const list = bugsForInitiative(bugs, initiative).sort((a, b) => b.createdAt - a.createdAt);
+  // Which states the reader wants to see. Open by default: an initiative page is read to answer
+  // "what is still wrong with this", and a long tail of fixed bugs buries that.
+  const [statusFilter, setStatusFilter] = useState<BugStatus | "all" | "open_only">("open_only");
+  const shown = useMemo(
+    () =>
+      list.filter((b) =>
+        statusFilter === "all" ? true
+        : statusFilter === "open_only" ? !isClosedStatus(b.status)
+        : b.status === statusFilter,
+      ),
+    [list, statusFilter],
+  );
+  // Counts come from the whole list, not the filtered one, so the chips keep saying what is there
+  // rather than collapsing to the selection.
+  const counts = useMemo(() => {
+    const c = new Map<BugStatus, number>();
+    for (const b of list) c.set(b.status, (c.get(b.status) ?? 0) + 1);
+    return c;
+  }, [list]);
+  const openCount = list.filter((b) => !isClosedStatus(b.status)).length;
   const m = initiativeMetrics(list);
   const meta = INITIATIVE_STATUS_META[initiative.status];
   const isOwner = user.id === initiative.owner.id;
@@ -188,17 +215,67 @@ export function InitiativeDetail({
         </div>
 
         <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
-            Bugs in this initiative
-          </p>
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+              Bugs in this initiative
+            </p>
+            {list.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1" data-testid="initiative-bug-filter">
+                <StateChip
+                  label="Still open"
+                  count={openCount}
+                  active={statusFilter === "open_only"}
+                  onClick={() => setStatusFilter("open_only")}
+                />
+                {BUG_STATUS_ORDER.filter((st) => (counts.get(st) ?? 0) > 0).map((st) => (
+                  <StateChip
+                    key={st}
+                    label={BUG_STATUS_META[st].label}
+                    count={counts.get(st) ?? 0}
+                    color={BUG_STATUS_META[st].color}
+                    active={statusFilter === st}
+                    onClick={() => setStatusFilter(st)}
+                  />
+                ))}
+                <StateChip
+                  label="All"
+                  count={list.length}
+                  active={statusFilter === "all"}
+                  onClick={() => setStatusFilter("all")}
+                />
+              </div>
+            )}
+          </div>
           {list.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/70 py-10 text-center text-[12.5px] text-muted-foreground">
               No bugs filed against this initiative yet — QA picks it in the draft form.
             </div>
+          ) : shown.length === 0 ? (
+            // Never a bare empty box: say which filter emptied it and offer the way out.
+            <div className="rounded-xl border border-dashed border-border/70 py-10 text-center text-[12.5px] text-muted-foreground">
+              {statusFilter === "open_only"
+                ? `All ${list.length} ${list.length === 1 ? "bug" : "bugs"} here are closed.`
+                : "No bugs in that state."}{" "}
+              <button
+                type="button"
+                onClick={() => setStatusFilter("all")}
+                className="underline underline-offset-2 transition-colors hover:text-foreground"
+              >
+                Show all
+              </button>
+            </div>
           ) : (
             <ul className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-card">
-              {list.map((b) => (
-                <li key={b.id} className="flex items-center gap-1 border-b border-border/50 pr-2 last:border-b-0">
+              {shown.map((b) => (
+                // Finished bugs stay readable but stop competing for attention: the row fades,
+                // the title is struck through, and only hover brings it back to full strength.
+                <li
+                  key={b.id}
+                  className={cn(
+                    "flex items-center gap-1 border-b border-border/50 pr-2 last:border-b-0 transition-opacity",
+                    isClosedStatus(b.status) && "opacity-55 hover:opacity-100",
+                  )}
+                >
                   <button
                     type="button"
                     // Carry where this was opened from, so Back returns to this initiative rather than
@@ -207,7 +284,14 @@ export function InitiativeDetail({
                     className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50"
                     data-testid={`initiative-bug-row-${b.humanId}`}
                   >
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{b.title}</span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-[13px] font-medium",
+                        isClosedStatus(b.status) && "line-through decoration-1 text-muted-foreground",
+                      )}
+                    >
+                      {b.title}
+                    </span>
                     <BugSeverityPill severity={b.severity} />
                     <BugStatusBadge status={b.status} />
                     <span className="hidden w-24 shrink-0 items-center gap-1.5 sm:flex">
@@ -226,6 +310,40 @@ export function InitiativeDetail({
         </div>
       </div>
     </div>
+  );
+}
+
+/** A count-bearing filter chip. Shows the dot only for real statuses — "Still open" and "All"
+ *  span several, so a single colour would misrepresent them. */
+function StateChip({
+  label,
+  count,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  color?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+        active
+          ? "border-primary/50 bg-primary/10 text-foreground"
+          : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {color && <span className="size-1.5 rounded-full" style={{ background: color }} />}
+      {label}
+      <span className="tabular-nums opacity-70">{count}</span>
+    </button>
   );
 }
 
