@@ -17,6 +17,11 @@ from .summary import build_summary_markdown
 
 router = APIRouter()
 
+from . import oauth  # noqa: E402  (imported after router to keep the module order readable)
+
+
+
+
 # Newest first. A client's requested version is echoed back when we speak it.
 SUPPORTED_VERSIONS = ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]
 LATEST = SUPPORTED_VERSIONS[0]
@@ -256,9 +261,24 @@ async def _agent_user(request: Request) -> dict[str, Any] | None:
     from jose import JWTError, jwt
 
     try:
-        payload = jwt.decode(header[7:].strip(), SECRET, algorithms=[ALGORITHM])
+        # verify_aud off here because the check below is the one that matters: python-jose would
+        # reject any token carrying an `aud` it was not told to expect, including our own.
+        payload = jwt.decode(header[7:].strip(), SECRET, algorithms=[ALGORITHM],
+                             options={"verify_aud": False})
     except JWTError:
         return None
+    # A refresh token is not an access token; without this check it would work as one and never
+    # expire in any useful sense.
+    if payload.get("typ") == "refresh":
+        return None
+    # RFC 8707 audience binding: a token minted for another resource must not be accepted here,
+    # or this server becomes a way to spend tokens meant for somebody else. Dashboard-issued
+    # tokens carry no `aud` at all and stay valid, so a hand-pasted token keeps working.
+    aud = payload.get("aud")
+    if aud is not None:
+        allowed = {oauth.resource_uri(request), oauth._base(request), oauth._origin(request)}
+        if not ({aud} & allowed if isinstance(aud, str) else set(aud) & allowed):
+            return None
     user = await users_col.find_one({"id": payload.get("sub")}, {"_id": 0})
     if not user:
         return None
@@ -439,7 +459,10 @@ async def mcp_endpoint(request: Request) -> Response:
     if not user:
         return JSONResponse(
             status_code=401,
-            content=_err(None, INVALID_REQUEST, "Connect your agent with a Bug Finder token: see Profile > Connect your agent."),
+            # The header is the whole point: a client that sees resource_metadata goes and
+            # authorizes in a browser. Without it, it can only ask a human for a token.
+            headers={"WWW-Authenticate": oauth.challenge_header(request)},
+            content=_err(None, INVALID_REQUEST, "Not signed in. Authorize this agent in your browser, or pass a Bug Finder token."),
         )
 
     try:

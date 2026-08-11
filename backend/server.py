@@ -10,7 +10,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from bugdash import admin, ai, auth, bugs, comments, domtime, initiatives, mcp, mcp_server, summary
+from bugdash import (admin, ai, auth, bugs, comments, domtime, initiatives, mcp, mcp_server,
+                     oauth, summary)
 
 app = FastAPI(title="BugDash AI")
 
@@ -51,3 +52,11 @@ app.include_router(admin.router)
 # The MCP endpoint agents connect to. Mounted at /mcp, outside /api, because that is the URL a
 # person pastes into their client.
 app.include_router(mcp_server.router)
+# Before the catch-alls: the .well-known and /oauth routes are what let a client authorize in a
+# browser instead of asking a human to paste a token.
+app.include_router(oauth.router)
+# Mounted twice on purpose. The ingress forwards only /api/* to this service, so /api/mcp
+# and /api/oauth/* are the paths a real client can reach; the unprefixed ones stay for
+# direct-to-backend use (local runs, tests, health checks).
+app.include_router(mcp_server.router, prefix="/api")
+app.include_router(oauth.router, prefix="/api")
