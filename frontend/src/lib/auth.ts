@@ -95,7 +95,15 @@ export function signOut() {
  *  UI never presents someone as signed in to an account that no longer exists. */
 export async function verifySession(): Promise<AuthUser | null> {
   const token = authToken();
-  if (!token || !BASE) return null;
+  if (!BASE) return null;
+  if (!token) {
+    // A cached session with no token is a leftover from the localStorage-only auth this replaced.
+    // It cannot authenticate anything: every write 401s while the UI still presents someone as
+    // signed in, and admin-gated controls stay invisible because the stale snapshot has no
+    // isAdmin. Clearing it is the only honest option — sign in again and get a real one.
+    if (loadSession()) setSession(null, null);
+    return null;
+  }
   try {
     const res = await fetch(BASE + "/api/auth/me", { headers: { Authorization: "Bearer " + token } });
     if (!res.ok) {
