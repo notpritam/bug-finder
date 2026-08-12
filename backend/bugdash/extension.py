@@ -17,7 +17,11 @@ releases_col = db["bf_extension_release"]
 #: the dashboard and the extension ship on different clocks and always will.
 FALLBACK = {
     "version": "0.2.3",
-    "downloadUrl": "https://github.com/notpritam/bug-finder-extension/releases/latest",
+    # Served by the dashboard, not GitHub: the extension repo is private, so a release link
+    # 404s for every person it would be shared with. The dashboard is the one place everyone
+    # already has access to — they need it to see the bug they just filed.
+    "downloadUrl": "/bug-finder-0.2.3.zip",
+    "installUrl": "/connect",
     "notes": "Finds out when it is out of date — a build loaded unpacked is never updated by Chrome.",
     "minSupported": "0.2.0",
 }

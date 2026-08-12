@@ -1,13 +1,15 @@
-// ABOUTME: How an agent gets in — the connect command, what it can do once connected, and who it
-// ABOUTME: acts as. This existed nowhere before: the only MCP reference in the whole app was a
-// ABOUTME: per-session copy-link, so the address had to be passed on by word of mouth, which is a
-// ABOUTME: poor way to distribute the one string standing between a developer and the evidence.
+// ABOUTME: The onboarding page — install the recorder, then connect an agent. This is the link you
+// ABOUTME: send someone, and it has to carry the download because the extension repo is private:
+// ABOUTME: a GitHub release is a 404 for anyone who is not a collaborator. Before this, both the
+// ABOUTME: build and the MCP address were passed on by word of mouth.
 import { useState } from "react";
 import {
   Bot,
   Check,
   Copy,
+  Download,
   KeyRound,
+  RefreshCw,
   MessageSquareCode,
   Search,
   ShieldCheck,
@@ -60,13 +62,57 @@ export function ConnectPage({ user }: { user: AuthUser | null }) {
   return (
     <div className="mx-auto w-full max-w-[860px] px-5 py-6">
       <header className="mb-5">
-        <h1 className="text-[19px] font-bold tracking-tight">Connect an agent</h1>
+        <h1 className="text-[19px] font-bold tracking-tight">Get set up</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Point a coding agent at this dashboard and it can read a recorded session — the DOM at any
-          moment, the response bodies, the httpOnly cookies — and post what it found back onto the
-          thread.
+          Install the recorder, then point a coding agent at this dashboard. It can read a recorded
+          session — the DOM at any moment, the response bodies, the httpOnly cookies — and post what
+          it found back onto the thread.
         </p>
       </header>
+
+      {/* Install comes first: the recorder is what produces the sessions everything below reads.
+          This is the page to send someone — the extension repo is private, so a release link is a
+          404 for anyone who is not a collaborator, and the dashboard is the one place every
+          reporter already has. */}
+      <Card title="Install the recorder" hint="Chrome" icon={Download} className="mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/bug-finder-0.2.3.zip"
+            download
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Download className="size-3.5" />
+            Download Bug Finder 0.2.3
+          </a>
+          <span className="text-[11.5px] text-muted-foreground">169 KB · Chrome 130+</span>
+        </div>
+        <ol className="mt-3 grid gap-1.5 text-[12px] text-muted-foreground">
+          <li>
+            <b className="text-foreground">1.</b> Unzip it. Keep the folder somewhere permanent —
+            Chrome loads it from where it sits, so moving or deleting it uninstalls the extension.
+          </li>
+          <li>
+            <b className="text-foreground">2.</b> Open <Code>chrome://extensions</Code> and turn on{" "}
+            <b className="text-foreground">Developer mode</b> (top right).
+          </li>
+          <li>
+            <b className="text-foreground">3.</b> Click <b className="text-foreground">Load unpacked</b> and
+            select the <Code>dist</Code> folder from the unzipped download.
+          </li>
+          <li>
+            <b className="text-foreground">4.</b> Pin it, then press{" "}
+            <Code>⌘⇧U</Code> on any page to start recording.
+          </li>
+        </ol>
+        <p className="mt-3 flex gap-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
+          <RefreshCw className="mt-px size-3.5 shrink-0" />
+          <span>
+            Chrome does not auto-update extensions loaded this way, so the recorder checks this
+            dashboard for you and says so at the start of a recording when a newer build exists.
+            Updating means downloading again and pressing reload on the extensions page.
+          </span>
+        </p>
+      </Card>
 
       <Card
         title="Add the server"
