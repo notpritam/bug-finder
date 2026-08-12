@@ -259,8 +259,18 @@ def pick_detail_lines(p: dict[str, Any], viewport: Any = None) -> list[str]:
     out: list[str] = []
     box = _box_str(pick_px(p, viewport))
     if box:
-        heights = [f"{k} {p[k]}" for k in ("offsetHeight", "scrollHeight") if p.get(k) is not None]
-        out.append(f"  - box: {box} px" + (f" · {' · '.join(heights)}" if heights else ""))
+        sizes = [f"{k} {p[k]}" for k in ("offsetHeight", "scrollHeight", "offsetWidth", "scrollWidth")
+                 if p.get(k) is not None]
+        out.append(f"  - box: {box} px" + (f" · {' · '.join(sizes)}" if sizes else ""))
+        # Say it, rather than leaving it to be spotted. A row of buttons wider than the strip
+        # holding it is one of the commonest CSS bugs, and two numbers a reader has to subtract is
+        # the difference between evidence and a pile of measurements.
+        for axis, content, visible in (("horizontally", "scrollWidth", "clientWidth"),
+                                       ("vertically", "scrollHeight", "clientHeight")):
+            need, have = p.get(content), p.get(visible)
+            if isinstance(need, (int, float)) and isinstance(have, (int, float)) and need > have + 1:
+                out.append(f"  - ⚠ **content overflows {axis}** — needs {need}px, has {have}px "
+                           f"({int(need - have)}px cut off or scrolled)")
     overlap = p.get("overlap")
     if isinstance(overlap, dict):
         covered = overlap.get("covered") or []
@@ -289,6 +299,12 @@ def pick_detail_lines(p: dict[str, Any], viewport: Any = None) -> list[str]:
         out.append(
             f"  - ↑ `{a.get('tag')}{('#' + a['id']) if a.get('id') else ''}`"
             f" h={a.get('offsetHeight')} scrollH={a.get('scrollHeight')}"
+            # Widths only when they disagree — on most ancestors they do not, and a chain of
+            # identical numbers is what stops people reading the chain.
+            + (f" w={a.get('offsetWidth')} scrollW={a.get('scrollWidth')}"
+               if isinstance(a.get("scrollWidth"), (int, float))
+               and isinstance(a.get("offsetWidth"), (int, float))
+               and a["scrollWidth"] > a["offsetWidth"] + 1 else "")
             + (f" overflow={overflow}" if overflow and overflow != "visible" else "")
             + (f" [{attrs}]" if attrs else "")
         )
