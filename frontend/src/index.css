@@ -395,3 +395,53 @@ mark.mark-active {
   background: #f97316 !important;
   color: #0c0a09 !important;
 }
+
+/* Typography for agent-authored prose (markdown, callout, and sanitised html blocks).
+   Scoped so an agent's <h3> renders as emphasis inside a comment rather than competing with the
+   dashboard's own headings, and so a wide table or long URL scrolls in its own box instead of
+   stretching the thread. */
+.prose-block > :first-child { margin-top: 0; }
+.prose-block > :last-child { margin-bottom: 0; }
+.prose-block p { margin: 0.4em 0; }
+.prose-block h1, .prose-block h2, .prose-block h3,
+.prose-block h4, .prose-block h5, .prose-block h6 {
+  margin: 0.7em 0 0.3em;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.prose-block ul, .prose-block ol { margin: 0.4em 0; padding-left: 1.25em; }
+.prose-block ul { list-style: disc; }
+.prose-block ol { list-style: decimal; }
+.prose-block li { margin: 0.15em 0; }
+.prose-block a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
+.prose-block code {
+  border-radius: 4px;
+  background: hsl(var(--muted));
+  padding: 0.1em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+.prose-block pre {
+  overflow-x: auto;
+  margin: 0.5em 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.4);
+  padding: 0.6em 0.75em;
+}
+.prose-block pre code { background: none; padding: 0; }
+.prose-block blockquote {
+  margin: 0.5em 0;
+  border-left: 2px solid hsl(var(--border));
+  padding-left: 0.75em;
+  color: hsl(var(--muted-foreground));
+}
+.prose-block table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
+.prose-block th, .prose-block td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+.prose-block img { max-width: 100%; height: auto; border-radius: 6px; }
+.prose-block hr { margin: 0.7em 0; border: 0; border-top: 1px solid hsl(var(--border)); }

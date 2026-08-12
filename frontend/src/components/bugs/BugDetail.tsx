@@ -7,6 +7,7 @@ import type { Bug, BugEvent, BugSeverity, BugStatus, Reporter } from "@/lib/type
 import { ENV_META, PRESET_TAGS, type Env } from "@/lib/meta";
 import type { Initiative } from "@/lib/initiatives";
 import { agentShareUrl, fetchAgentComments, type AgentComment } from "@/lib/bugs-api";
+import { CommentBlocks } from "./CommentBlocks";
 import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
 import {
   BUG_SEVERITY_ORDER,
@@ -480,7 +481,10 @@ export function BugDetail({
             <CommentComposer me={me} onSubmit={(body) => onComment(bug.id, body)} />
             <ol className="mt-3 space-y-3">
               {historyFeed.map((ev) => {
-                const isAgent = agentComments.some((c) => c.id === ev.id);
+                // The comment itself, not just whether one exists — a structured finding renders
+                // its blocks in place of the flat line the feed used to show.
+                const comment = agentComments.find((c) => c.id === ev.id);
+                const isAgent = Boolean(comment);
                 return (
                   <li key={ev.id} className="flex gap-2.5">
                     {isAgent ? (
@@ -501,10 +505,13 @@ export function BugDetail({
                             agent
                           </span>
                         )}{" "}
-                        <span className={cn(ev.kind === "comment" ? "text-foreground/90" : "text-foreground/70")}>
-                          {ev.detail}
-                        </span>
+                        {!comment && (
+                          <span className={cn(ev.kind === "comment" ? "text-foreground/90" : "text-foreground/70")}>
+                            {ev.detail}
+                          </span>
+                        )}
                       </p>
+                      {comment && <CommentBlocks blocks={comment.blocks} />}
                       <p className="mt-0.5 text-[10.5px] text-muted-foreground">{relativeTime(ev.at)}</p>
                     </div>
                   </li>

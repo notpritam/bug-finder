@@ -14,6 +14,25 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * A block of a structured finding. `html` on the three prose kinds was sanitised by the server at
+ * write time — that is the only reason it is safe to render, so do not build these client-side and
+ * do not widen this union without adding the matching server-side validation.
+ */
+export type CommentBlock =
+  | { type: "markdown"; html: string }
+  | { type: "callout"; level: "info" | "warn" | "error" | "success"; title?: string; html: string }
+  | { type: "html"; html: string }
+  | { type: "code"; lang?: string; src: string; highlight?: number[]; caption?: string }
+  | { type: "diagram"; lang: "mermaid"; src: string; caption?: string }
+  | { type: "table"; columns: string[]; rows: string[][]; caption?: string }
+  | { type: "keyvalue"; items: { k: string; v: string; mono?: boolean }[]; caption?: string }
+  | {
+      type: "evidence";
+      ref: { kind: string; index?: number; t?: number; selector?: string };
+      note?: string;
+    };
+
 export interface AgentComment {
   id: string;
   bugHumanId: string;
@@ -22,6 +41,8 @@ export interface AgentComment {
   body: string;
   at: number;
   source: "agent" | "dashboard";
+  /** Always present — the server synthesises one from `body` for comments predating blocks. */
+  blocks: CommentBlock[];
 }
 
 /**
