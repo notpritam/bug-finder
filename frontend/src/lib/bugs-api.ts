@@ -76,6 +76,15 @@ export function agentShareUrl(humanId: string): string {
   return `${BASE ?? ""}/api/mcp/bugs/${humanId}`;
 }
 
+/**
+ * The MCP endpoint an agent connects to. Falls back to the page's own origin so a deployment that
+ * never set REACT_APP_BACKEND_URL still shows a working address rather than a bare path — this
+ * string gets pasted into a terminal, where a relative URL is not an address at all.
+ */
+export function mcpEndpointUrl(): string {
+  return `${BASE || window.location.origin}/api/mcp`;
+}
+
 /** Raised when the server rejected the snapshot. Publishing stays non-blocking, but it must not
  *  be silent: a bug that looks filed and exists only in this browser is the worst outcome this
  *  product can produce, and swallowing the error is exactly how BF-102..106 went missing. */

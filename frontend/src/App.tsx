@@ -42,6 +42,7 @@ import { InitiativesPage } from "@/components/initiatives/InitiativesPage";
 import { InitiativeDetail } from "@/components/initiatives/InitiativeDetail";
 import { InsightsPage } from "@/components/insights/InsightsPage";
 import { AdminPage } from "@/components/admin/AdminPage";
+import { ConnectPage } from "@/components/connect/ConnectPage";
 import { listInitiatives, type Initiative } from "@/lib/initiatives";
 
 /** A list row from the server is deliberately light: the capture arrays are projected out, and
@@ -82,6 +83,7 @@ const VIEW_TO_PATH: Record<SidebarView, string> = {
   drafts: "/drafts",
   initiatives: "/initiatives",
   insights: "/insights",
+  connect: "/connect",
   admin: "/admin",
   reported: "/sessions/reported",
 };
@@ -404,7 +406,7 @@ function Shell({
   const activeView: SidebarView =
     seg[0] === "bugs"
       ? (PATH_TO_VIEW[seg[1]] ?? "all")
-      : ((["drafts", "initiatives", "insights", "admin"] as const).find((v) => v === seg[0]) ?? "all");
+      : ((["drafts", "initiatives", "insights", "connect", "admin"] as const).find((v) => v === seg[0]) ?? "all");
 
   /** Mutate one bug, appending a history event, and persist it. */
   const amendBug = (id: string, patch: Partial<Bug>, historyDetail: string | null) => {
@@ -729,6 +731,7 @@ function Shell({
             path="/insights"
             element={user ? <InsightsPage bugs={bugs} initiatives={initiatives} /> : <Navigate to="/auth" replace />}
           />
+          <Route path="/connect" element={<ConnectPage user={user} />} />
           <Route path="/admin" element={user ? <AdminPage user={user} /> : <Navigate to="/auth" replace />} />
           <Route
             path="/auth"

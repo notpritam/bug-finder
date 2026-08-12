@@ -1,6 +1,7 @@
 // ABOUTME: Collapsible left rail — brand mark, bug views with live counts, drafts inbox,
 // ABOUTME: workspace (initiatives + insights), and a user footer. Counts come from App state.
 import {
+  Bot,
   Bug as BugIcon,
   ChevronsLeft,
   CircleDot,
@@ -33,6 +34,7 @@ export type SidebarView =
   | "drafts"
   | "initiatives"
   | "insights"
+  | "connect"
   | "admin";
 
 /** A resolved, dismissed or won't-fix session is answered, and the list hides it by default. These
@@ -167,6 +169,14 @@ export function Sidebar({
               label="Insights"
               active={view === "insights"}
               onClick={() => onView("insights")}
+            />
+            {/* The connect string had no home before this — it was passed on by word of mouth. */}
+            <NavRow
+              collapsed={collapsed}
+              icon={<Bot className="size-[17px]" />}
+              label="Connect an agent"
+              active={view === "connect"}
+              onClick={() => onView("connect")}
             />
             {/* Account management. Hidden from non-admins as a courtesy — the server is what
                 actually refuses them. */}
