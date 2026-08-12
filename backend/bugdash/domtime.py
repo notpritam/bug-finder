@@ -26,7 +26,10 @@ router = APIRouter()
 _STORAGE_API = os.environ.get("STORAGE_API_URL") or "https://storage-api-docs.internal.emergent.host/api"
 _FETCH_CAP_BYTES = 40_000_000
 _HTML_CAP = 300_000
-_OUTER_HTML_CAP = 4_000
+# 4_000 was small enough to cut a single component in half — one button with an inline SVG icon
+# runs to most of a kilobyte, so a tab strip exceeded it and came back looking like a tab strip
+# with three tabs. Ten matches at this cap is still a bounded response.
+_OUTER_HTML_CAP = 40_000
 
 # Tiny in-process cache: agents drill the same recording at several timestamps back to back.
 _events_cache: dict[str, list[dict[str, Any]]] = {}
@@ -371,6 +374,7 @@ async def bug_dom_at(
             text = text_of(store, node_id)
             if needle and needle not in text.lower():
                 continue
+            raw = serialize(store, node_id, cap=_OUTER_HTML_CAP)
             matches.append(
                 {
                     "nodeId": node_id,
@@ -378,7 +382,12 @@ async def bug_dom_at(
                     "attributes": node["attributes"],
                     "path": _node_path(store, node_id),
                     "text": text,
-                    "outerHTML": serialize(store, node_id, cap=_OUTER_HTML_CAP)[: _OUTER_HTML_CAP + 200],
+                    "outerHTML": raw[: _OUTER_HTML_CAP + 200],
+                    # Always stated, never inferred. serialize() closes every tag it opened, so a
+                    # subtree cut off at the cap is still well-formed HTML and reads as complete —
+                    # a reader who checks that it parses concludes the content was never recorded.
+                    # That is precisely the wrong conclusion to hand an agent about its evidence.
+                    "truncated": len(raw) > _OUTER_HTML_CAP,
                 }
             )
             if len(matches) >= limit:
