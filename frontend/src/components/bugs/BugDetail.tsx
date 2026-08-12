@@ -481,7 +481,11 @@ export function BugDetail({
           )}
           <Card title="History & comments">
             <CommentComposer me={me} onSubmit={(body) => onComment(bug.id, body)} />
-            <ol className="mt-3 space-y-3">
+            {/* The composer stays put and only the thread scrolls. A structured finding can carry
+                a diagram or a table, so one agent comment is easily taller than the old whole feed
+                — left unbounded it pushes the box that posts replies off the bottom of the page.
+                pr-1 keeps the scrollbar off the text rather than over it. */}
+            <ol className="scroll-thin mt-3 max-h-[440px] space-y-3 overflow-y-auto pr-1">
               {historyFeed.map((ev) => {
                 // The comment itself, not just whether one exists — a structured finding renders
                 // its blocks in place of the flat line the feed used to show.
