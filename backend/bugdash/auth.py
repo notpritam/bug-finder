@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
 
-from .core import db, now_ms
+from .core import db, now_ms, propagate_rename
 
 router = APIRouter()
 users_col = db["users"]
@@ -142,6 +142,36 @@ async def login(body: Credentials) -> Session:
 @router.get("/api/auth/me", response_model=PublicUser)
 async def me(user: dict[str, Any] = Depends(require_user)) -> PublicUser:
     return _public(user)
+
+
+class ProfilePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    team: str | None = Field(default=None, max_length=80)
+
+
+@router.patch("/api/auth/me", response_model=PublicUser)
+async def update_own_profile(
+    body: ProfilePatch,
+    user: dict[str, Any] = Depends(require_user),
+) -> PublicUser:
+    """Edit your own name and team.
+
+    Deliberately narrower than the admin route: `role` and `isAdmin` are absent, and absent rather
+    than validated away, so no future edit here can accidentally make them reachable. Self-service
+    that can grant itself admin is a privilege escalation wearing a settings page.
+    """
+    upd: dict[str, Any] = {}
+    if body.name is not None and body.name.strip():
+        upd["name"] = body.name.strip()
+    if body.team is not None:
+        upd["team"] = body.team.strip()
+    if not upd:
+        return _public(user)
+    await users_col.update_one({"id": user["id"]}, {"$set": upd})
+    if "name" in upd:
+        await propagate_rename(user["id"], upd["name"])
+    fresh = await users_col.find_one({"id": user["id"]}, {"_id": 0}) or {**user, **upd}
+    return _public(fresh)
 
 
 @router.delete("/api/auth/me")

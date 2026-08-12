@@ -38,3 +38,16 @@ def fmt_offset(ms: int | float | None) -> str:
     s = abs(ms) // 1000
     sign = "-" if ms < 0 else ""
     return f"{sign}{s // 60}:{s % 60:02d}"
+
+
+async def propagate_rename(user_id: str, name: str) -> None:
+    """Push a new display name onto the copies of it.
+
+    The roster is denormalised onto every session and initiative — `reporter.name`, `assignee.name`,
+    `owner.name` — so a rename that only touches the account leaves already-filed work showing the
+    old one forever. Shared by the admin route and the self-service one on purpose: a rename that
+    propagates from one path and not the other is the kind of split that stays wrong quietly.
+    """
+    await bugs_col.update_many({"assignee.id": user_id}, {"$set": {"assignee.name": name}})
+    await bugs_col.update_many({"reporter.id": user_id}, {"$set": {"reporter.name": name}})
+    await initiatives_col.update_many({"owner.id": user_id}, {"$set": {"owner.name": name}})

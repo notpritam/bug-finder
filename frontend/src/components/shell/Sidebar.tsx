@@ -36,6 +36,7 @@ export type SidebarView =
   | "initiatives"
   | "insights"
   | "connect"
+  | "profile"
   | "admin";
 
 /** A resolved, dismissed or won't-fix session is answered, and the list hides it by default. These
@@ -197,7 +198,18 @@ export function Sidebar({
       <footer className="border-t border-sidebar-border p-2.5">
         <div className={cn("flex items-center gap-2.5 rounded-lg px-1.5 py-1", collapsed && "justify-center px-0")}>
           {user ? (
-            <UserAvatar name={user.name} seed={user.id} size={30} />
+            /* Your own name is where people look for a profile, so it is the way in. */
+            <button
+              type="button"
+              onClick={() => onView("profile")}
+              title="Your profile"
+              className={cn(
+                "shrink-0 rounded-full outline-none ring-offset-2 ring-offset-sidebar transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/50",
+                view === "profile" && "ring-2 ring-primary/50",
+              )}
+            >
+              <UserAvatar name={user.name} seed={user.id} size={30} />
+            </button>
           ) : (
             <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-sidebar-accent text-muted-foreground">
               <UserRound className="size-4" />
@@ -206,12 +218,17 @@ export function Sidebar({
           {!collapsed && (
             <div className="min-w-0 flex-1">
               {user ? (
-                <>
+                <button
+                  type="button"
+                  onClick={() => onView("profile")}
+                  title="Your profile"
+                  className="block w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
                   <p className="truncate text-[12.5px] font-semibold">{user.name}</p>
                   <p className="truncate text-[10.5px] text-muted-foreground">
                     {user.role} · {user.team}
                   </p>
-                </>
+                </button>
               ) : (
                 <button
                   type="button"

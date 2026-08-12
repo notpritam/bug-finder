@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
 from .auth import BOOTSTRAP_ADMIN_EMAILS, is_admin_doc, require_admin, users_col
-from .core import bugs_col, initiatives_col, now_ms
+from .core import bugs_col, initiatives_col, now_ms, propagate_rename
 
 router = APIRouter()
 
@@ -125,12 +125,8 @@ async def patch_user(
     if upd:
         await users_col.update_one({"id": user_id}, {"$set": upd})
         doc = await users_col.find_one({"id": user_id}, {"_id": 0}) or doc
-    # The roster is denormalised onto every bug, so a rename has to travel to the copies or the
-    # dashboard keeps showing the old name on already-filed sessions.
     if "name" in upd:
-        await bugs_col.update_many({"assignee.id": user_id}, {"$set": {"assignee.name": upd["name"]}})
-        await bugs_col.update_many({"reporter.id": user_id}, {"$set": {"reporter.name": upd["name"]}})
-        await initiatives_col.update_many({"owner.id": user_id}, {"$set": {"owner.name": upd["name"]}})
+        await propagate_rename(user_id, upd["name"])
     return await _decorate(doc)
 
 

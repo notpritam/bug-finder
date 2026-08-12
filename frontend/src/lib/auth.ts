@@ -120,6 +120,31 @@ export async function verifySession(): Promise<AuthUser | null> {
 }
 
 /** Everyone with an account - assignee options. */
+/** Edit your own name and team. Deliberately narrow — role and admin are the admin route's to
+ *  change, and are not accepted here even if sent. */
+export async function updateOwnProfile(patch: { name?: string; team?: string }): Promise<AuthUser> {
+  const token = authToken();
+  if (!BASE || !token) throw new Error("Not signed in.");
+  const res = await fetch(BASE + "/api/auth/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.detail ?? "Could not save your profile.");
+  }
+  const fresh = (await res.json()) as AuthUser;
+  // The session cache is what the sidebar and every reporter field read from, so it has to move
+  // with the account or the new name only appears after a reload.
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(fresh));
+  } catch {
+    /* private mode */
+  }
+  return fresh;
+}
+
 export async function listAccountUsers(): Promise<AuthUser[]> {
   const token = authToken();
   if (!token || !BASE) return [];
