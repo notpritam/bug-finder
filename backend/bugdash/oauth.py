@@ -38,6 +38,18 @@ def _origin(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+#: RFC 8414 does not append the issuer's path to /.well-known — it *inserts* the well-known segment
+#: between host and path. So for issuer https://host/api a client fetches
+#: https://host/.well-known/oauth-authorization-server/api, which is outside /api/ entirely. Those
+#: paths are served too, and they must still describe the /api issuer or the metadata contradicts
+#: the document that pointed at it.
+_ISSUER_IS_API = (
+    "/.well-known/oauth-authorization-server/api",
+    "/.well-known/oauth-protected-resource/api",
+    "/.well-known/openid-configuration/api",
+)
+
+
 def _base(request: Request) -> str:
     """Public base URL these endpoints live under.
 
@@ -47,7 +59,10 @@ def _base(request: Request) -> str:
     until a client follows one of them and lands on the SPA's index.html instead of JSON.
     """
     origin = _origin(request)
-    return f"{origin}/api" if request.url.path.startswith("/api/") else origin
+    path = request.url.path
+    if path.startswith("/api/") or path in _ISSUER_IS_API:
+        return f"{origin}/api"
+    return origin
 
 
 def resource_uri(request: Request) -> str:
@@ -68,6 +83,7 @@ def challenge_header(request: Request) -> str:
 
 @router.get("/.well-known/oauth-protected-resource")
 @router.get("/.well-known/oauth-protected-resource/mcp")
+@router.get("/.well-known/oauth-protected-resource/api")
 async def protected_resource_metadata(request: Request) -> JSONResponse:
     """RFC 9728. The client reads this to learn which authorization server to talk to."""
     o = _base(request)
@@ -82,7 +98,9 @@ async def protected_resource_metadata(request: Request) -> JSONResponse:
 
 @router.get("/.well-known/oauth-authorization-server")
 @router.get("/.well-known/oauth-authorization-server/mcp")
+@router.get("/.well-known/oauth-authorization-server/api")
 @router.get("/.well-known/openid-configuration")
+@router.get("/.well-known/openid-configuration/api")
 async def authorization_server_metadata(request: Request) -> JSONResponse:
     """RFC 8414. Served at the OpenID path too because clients try both in priority order."""
     o = _base(request)
