@@ -106,7 +106,12 @@ export function UpdatesBell() {
       </button>
 
       {open && (
-        <div className="absolute bottom-9 right-0 z-50 w-[330px] rounded-xl border border-border/70 bg-popover p-2 shadow-lg">
+        /* Opens up and to the RIGHT. The bell lives in a left-edge rail 240px wide (64px when
+           collapsed) and this panel is 330px, so anchoring its right edge to the bell — the reflex
+           for a dropdown — pushed most of it past the left edge of the viewport. Anchoring left
+           instead lets it extend over the main column, which is the empty direction. bottom-full
+           rather than a fixed offset, so it sits above the bell whatever its height. */
+        <div className="absolute bottom-full left-0 z-50 mb-2 w-[330px] max-w-[calc(100vw-2rem)] rounded-xl border border-border/70 bg-popover p-2 shadow-lg">
           <header className="flex items-center gap-1.5 px-1.5 pb-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Updates
