@@ -23,6 +23,7 @@ import type { Bug } from "@/lib/types";
 import type { AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { UserAvatar, isClosedStatus } from "@/components/common/bits";
+import { UpdatesBell } from "@/components/updates/UpdatesBell";
 
 export type SidebarView =
   | "all"
@@ -226,6 +227,7 @@ export function Sidebar({
           )}
           {!collapsed && (
             <>
+              {user && <UpdatesBell />}
               <ThemeToggle />
               {user && (
                 <button
@@ -243,6 +245,7 @@ export function Sidebar({
         </div>
         {collapsed && (
           <div className="mt-1 flex flex-col items-center gap-1">
+            {user && <UpdatesBell />}
             <ThemeToggle />
             {user ? (
               <button

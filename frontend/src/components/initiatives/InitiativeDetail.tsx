@@ -2,6 +2,7 @@
 // ABOUTME: owner's lifecycle controls (edit, transfer, mark shipped, archive).
 import { useMemo, useState } from "react";
 import { CopyLink } from "@/components/common/CopyLink";
+import { FollowButton } from "@/components/updates/FollowButton";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Pencil, Rocket, Ship } from "lucide-react";
 import type { Bug, BugStatus, Reporter } from "@/lib/types";
@@ -102,6 +103,9 @@ export function InitiativeDetail({
               {initiative.status === "shipped" ? <Ship className="size-3" /> : <Rocket className="size-3" />}
               {meta.label}
             </span>
+            {/* Following an initiative is how you hear about sessions filed into it later — the
+                ones you would otherwise only find by checking. */}
+            <FollowButton initiativeId={initiative.id} className="ml-auto" />
             {initiative.team && (
               <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
                 {initiative.team}

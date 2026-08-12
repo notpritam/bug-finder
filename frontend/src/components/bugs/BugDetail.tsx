@@ -8,6 +8,7 @@ import { ENV_META, PRESET_TAGS, type Env } from "@/lib/meta";
 import type { Initiative } from "@/lib/initiatives";
 import { agentShareUrl, fetchAgentComments, type AgentComment } from "@/lib/bugs-api";
 import { CommentBlocks } from "./CommentBlocks";
+import { FollowButton } from "@/components/updates/FollowButton";
 import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
 import {
   BUG_SEVERITY_ORDER,
@@ -235,6 +236,7 @@ export function BugDetail({
               onOpenTag={(tag) => navigate(`/sessions?tag=${encodeURIComponent(tag)}`)}
             />
             <span className="ml-auto flex items-center gap-3 text-[11.5px] text-muted-foreground">
+              <FollowButton humanId={bug.humanId} />
               <button
                 type="button"
                 onClick={copyAgentUrl}

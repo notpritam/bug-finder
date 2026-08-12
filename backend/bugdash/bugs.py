@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pymongo import ReturnDocument
 from pymongo.errors import DocumentTooLarge
 
+from . import events as feed  # aliased: patch_bug already has a local `events` (its history rows)
 from .auth import require_user
 from .comments import list_comments_for
 from .core import bugs_col, comments_col, clean_bug_doc, db, now_ms
@@ -117,6 +118,17 @@ async def publish_bug(
             f"{human_id} exceeds MongoDB's 16MB document limit. Offload the heavy evidence "
             "(replay events, network bodies, screenshots) to file storage and publish the "
             "snapshot with references instead of inline payloads.",
+        )
+    # Only the first publish is news. The client republishes the whole snapshot on every mutation,
+    # so announcing each one would turn "a session was filed" into a stream nobody reads.
+    if not prior:
+        await feed.record(
+            "bug_filed",
+            summary=f"{human_id} filed: {payload.get('title') or '(no title)'}",
+            bug_human_id=human_id,
+            initiative_id=payload.get("initiativeId"),
+            actor_id=(payload.get("reporter") or {}).get("id"),
+            actor_name=(payload.get("reporter") or {}).get("name"),
         )
     return {"ok": True, "humanId": human_id}
 
@@ -430,4 +442,15 @@ async def patch_bug(
         projection=LIGHT,
         return_document=ReturnDocument.AFTER,
     )
+    for ev in events:
+        kind = {"status": "status", "severity": "severity", "assignee": "assignment"}.get(ev["field"])
+        if kind:
+            await feed.record(
+                kind,
+                summary=f"{human_id}: {ev['detail']}",
+                bug_human_id=human_id,
+                initiative_id=(fresh or doc).get("initiativeId"),
+                actor_id=user.get("id"),
+                actor_name=actor,
+            )
     return fresh or doc

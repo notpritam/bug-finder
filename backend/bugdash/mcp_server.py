@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
 from .auth import SECRET, ALGORITHM, users_col
+from . import events
 from .blocks import BLOCK_TYPES, blocks_to_text, normalize_blocks
 from .bugs import LIGHT, load_bug
 from .comments import list_comments_for
@@ -256,6 +257,43 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "watch",
+        "title": "Follow a session or an initiative",
+        "description": (
+            "Say what you want to hear about while you work. Follow an initiative and you learn "
+            "when a new session is filed into it; follow a session and you learn when someone "
+            "comments, changes its status, or attaches new evidence. Idempotent — call it as often "
+            "as you like. Pass stop=true to stop following."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "initiativeId": {"type": "string"},
+                "humanId": {"type": "string", "description": "A session id such as BF-121"},
+                "stop": {"type": "boolean", "description": "Unfollow instead of follow"},
+            },
+        },
+    },
+    {
+        "name": "get_updates",
+        "title": "What changed while you were working",
+        "description": (
+            "Everything that happened on what you follow since you last asked — new comments, new "
+            "sessions in an initiative, status and severity changes. Call it between steps on a "
+            "long task: a human may have answered a question, filed a related session, or closed "
+            "the one you are working on. Your own writes are never returned. Narrow with "
+            "initiativeId or humanId to ask about one thing without receiving everything else."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "since": {"type": "integer", "description": "Epoch ms. Omit to continue from where you last read."},
+                "initiativeId": {"type": "string"},
+                "humanId": {"type": "string"},
+            },
+        },
+    },
+    {
         "name": "update_session",
         "title": "Change a session",
         "description": (
@@ -406,7 +444,8 @@ async def _run_tool(name: str, args: dict[str, Any], user: dict[str, Any]) -> An
     if name == "post_finding":
         import uuid
 
-        if not await bugs_col.find_one({"humanId": hid}, {"_id": 1}):
+        target = await bugs_col.find_one({"humanId": hid}, {"_id": 1, "initiativeId": 1})
+        if not target:
             raise ValueError(f"bug {hid} not found")
         # normalize_blocks raises ValueError, which _run_tool's caller turns into an MCP error the
         # agent can read and correct — the whole reason the messages name the block index.
@@ -427,7 +466,42 @@ async def _run_tool(name: str, args: dict[str, Any], user: dict[str, Any]) -> An
         }
         await comments_col.insert_one(dict(doc2))
         doc2.pop("_id", None)
+        await events.record(
+            "comment",
+            summary=f"{doc2['actor']} posted a finding on {hid}: {body[:140]}",
+            bug_human_id=hid,
+            initiative_id=target.get("initiativeId"),
+            actor_id=user["id"],
+            actor_name=doc2["actor"],
+        )
         return {"posted": True, "comment": doc2}
+
+    if name == "watch":
+        initiative, stop = args.get("initiativeId"), bool(args.get("stop"))
+        if not initiative and not hid:
+            raise ValueError("watch needs an initiativeId or a humanId")
+        fn = events.unsubscribe if stop else events.subscribe
+        following = await fn(user["id"], initiative_id=initiative, bug_human_id=hid or None)
+        # A fresh follower starts from now, not from the beginning of the feed — otherwise the
+        # first get_updates replays weeks of history as though it had all just happened.
+        if not stop and not await events.cursor_for(user["id"]):
+            await events.set_cursor(user["id"], now_ms())
+        return {"following": following}
+
+    if name == "get_updates":
+        since = args.get("since")
+        since_ms = int(since) if since is not None else await events.cursor_for(user["id"])
+        rows = await events.updates_for(
+            user["id"],
+            since_ms=since_ms,
+            initiative_id=args.get("initiativeId"),
+            bug_human_id=hid or None,
+        )
+        # Advance only on an unfiltered read. Narrowing to one session and then marking everything
+        # read is how the other updates get lost.
+        if since is None and not args.get("initiativeId") and not hid:
+            await events.set_cursor(user["id"], rows[-1]["at"] if rows else now_ms())
+        return {"count": len(rows), "since": since_ms, "updates": rows}
 
     if name == "update_session":
         patch = {k: args[k] for k in ("status", "severity", "tags") if k in args}
@@ -478,6 +552,14 @@ async def _dispatch(msg: dict[str, Any], user: dict[str, Any], version: str) -> 
             return _err(rid, INVALID_PARAMS, f"unknown tool: {name}")
         try:
             result = await _run_tool(name, params.get("arguments") or {}, user)
+            # The nudge. An agent that has to remember to poll will not; one told "3 updates"
+            # while doing something else will. Only on dict results, and never on get_updates
+            # itself, which has just answered the question.
+            if isinstance(result, dict) and name != "get_updates":
+                waiting = await events.waiting_for(user.get("id"))
+                if waiting:
+                    result = {**result, "updatesWaiting": waiting,
+                              "updatesHint": "call get_updates to see what changed"}
             return _ok(rid, _text(result))
         except Exception as exc:  # a failed tool is a result, not a transport error
             return _ok(rid, {**_text(f"{type(exc).__name__}: {exc}"), "isError": True})
