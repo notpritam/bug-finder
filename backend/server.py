@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from bugdash import (
-    admin, ai, auth, bugs, comments, domtime, events, initiatives, mcp, mcp_server,
+    admin, ai, auth, bugs, comments, domtime, events, extension, initiatives, mcp, mcp_server,
                      oauth, summary)
 
 app = FastAPI(title="BugDash AI")
@@ -47,6 +47,7 @@ app.include_router(domtime.router)
 app.include_router(summary.router)
 app.include_router(comments.router)
 app.include_router(events.router)
+app.include_router(extension.router)
 app.include_router(mcp.router)
 app.include_router(ai.router)
 app.include_router(initiatives.router)
