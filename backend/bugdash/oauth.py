@@ -47,6 +47,12 @@ _ISSUER_IS_API = (
     "/.well-known/oauth-authorization-server/api",
     "/.well-known/oauth-protected-resource/api",
     "/.well-known/openid-configuration/api",
+    # RFC 9728 inserts the well-known segment before the *resource's* full path, so a client
+    # configured at https://host/api/mcp asks for this one first. It answered 404, the client fell
+    # back to the bare document at the root, and that described the other deployment — the error it
+    # reported was a resource mismatch, which reads as a server misconfiguration rather than a
+    # missing route.
+    "/.well-known/oauth-protected-resource/api/mcp",
 )
 
 
@@ -84,6 +90,7 @@ def challenge_header(request: Request) -> str:
 @router.get("/.well-known/oauth-protected-resource")
 @router.get("/.well-known/oauth-protected-resource/mcp")
 @router.get("/.well-known/oauth-protected-resource/api")
+@router.get("/.well-known/oauth-protected-resource/api/mcp")
 async def protected_resource_metadata(request: Request) -> JSONResponse:
     """RFC 9728. The client reads this to learn which authorization server to talk to."""
     o = _base(request)
