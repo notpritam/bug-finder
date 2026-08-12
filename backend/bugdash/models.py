@@ -72,9 +72,12 @@ class BugPayload(BaseModel):
 
 
 class AgentComment(BaseModel):
-    body: str = Field(min_length=1, max_length=8000)
+    # Either half may carry the comment: `blocks` is the structured form, `body` the plain one.
+    # Whichever is missing is derived from the other on write, so both are always stored.
+    body: str = Field(default="", max_length=8000)
     actor: str = "Agent"
     kind: str = "comment"  # comment | status_suggestion | fix_proposal
+    blocks: list[dict[str, Any]] | None = None
 
 
 class CommentOut(BaseModel):
@@ -85,6 +88,9 @@ class CommentOut(BaseModel):
     body: str
     at: int
     source: str  # "agent" | "dashboard"
+    # Never absent — synthesised from `body` for comments stored before blocks existed, so the
+    # dashboard has exactly one shape to render rather than a fallback path that rots.
+    blocks: list[dict[str, Any]] = []
 
 
 # ------------------- initiatives -------------------

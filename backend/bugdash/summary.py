@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from .bugs import load_bug
 from .capture_health import capture_health_lines
+from .blocks import blocks_to_markdown
 from .comments import list_comments_for
 from .core import fmt_offset
 from .evidence_store import guard_offloaded
@@ -272,7 +273,15 @@ def build_summary_markdown(doc: dict[str, Any], comments: list[CommentOut]) -> s
         lines.append("## Agent comments")
         for c in comments:
             when = datetime.fromtimestamp(c.at / 1000, tz=timezone.utc).isoformat()
-            lines.append(f"- {when} · **{c.actor}** ({c.kind}): {c.body}")
+            rich = [b for b in (c.blocks or []) if b.get("type") != "markdown"]
+            if rich:
+                # A structured comment is rebuilt as markdown rather than flattened: a table stays
+                # a table and a diagram stays a diagram, so the agent reading this briefing sees
+                # what the agent writing it drew.
+                lines.append(f"- {when} · **{c.actor}** ({c.kind}):")
+                lines.extend(f"  {ln}" for ln in blocks_to_markdown(c.blocks))
+            else:
+                lines.append(f"- {when} · **{c.actor}** ({c.kind}): {c.body}")
         lines.append("")
 
     lines.append("## Machine endpoints")

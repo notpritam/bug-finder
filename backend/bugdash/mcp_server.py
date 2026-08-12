@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
 from .auth import SECRET, ALGORITHM, users_col
+from .blocks import BLOCK_TYPES, blocks_to_text, normalize_blocks
 from .bugs import LIGHT, load_bug
 from .comments import list_comments_for
 from .core import bugs_col, comments_col, now_ms
@@ -212,16 +213,46 @@ TOOLS: list[dict[str, Any]] = [
         "title": "Post a finding back",
         "description": (
             "Write your conclusion onto the session thread, where the reporter and the developer "
-            "will read it. Use kind=fix_proposal when you are proposing a change."
+            "will read it. Use kind=fix_proposal when you are proposing a change.\n\n"
+            "Send `blocks` to have the dashboard render the finding properly — a diagram of the "
+            "failure path, the offending code with the bad lines marked, observed-vs-expected as a "
+            "table, or a link straight to the network entry you are talking about. Prefer an "
+            "`evidence` block over describing where you looked: it becomes a live link into the "
+            "capture. `body` is optional when blocks are sent; it is derived for the surfaces that "
+            "only read text. HTML is filtered to a safe subset, so scripts and event handlers are "
+            "dropped rather than rejected — do not rely on them."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "humanId": {"type": "string"},
-                "body": {"type": "string", "description": "Markdown"},
+                "body": {"type": "string", "description": "Markdown. Optional when `blocks` is given."},
                 "kind": {"type": "string", "description": "comment | status_suggestion | fix_proposal"},
+                "blocks": {
+                    "type": "array",
+                    "description": "Structured finding, rendered in order.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": list(BLOCK_TYPES),
+                                "description": (
+                                    "markdown {md} · callout {level:info|warn|error|success,title?,md} · "
+                                    "code {lang,src,highlight?:[lineNos],caption?} · "
+                                    "diagram {lang:'mermaid',src,caption?} · "
+                                    "table {columns:[],rows:[[]],caption?} · "
+                                    "keyvalue {items:[{k,v,mono?}],caption?} · "
+                                    "evidence {ref:{kind:network|console|dom|state|cookie|storage|marker,"
+                                    "index?,t?,selector?},note?} · html {html}"
+                                ),
+                            },
+                        },
+                        "required": ["type"],
+                    },
+                },
             },
-            "required": ["humanId", "body"],
+            "required": ["humanId"],
         },
     },
     {
@@ -377,15 +408,22 @@ async def _run_tool(name: str, args: dict[str, Any], user: dict[str, Any]) -> An
 
         if not await bugs_col.find_one({"humanId": hid}, {"_id": 1}):
             raise ValueError(f"bug {hid} not found")
+        # normalize_blocks raises ValueError, which _run_tool's caller turns into an MCP error the
+        # agent can read and correct — the whole reason the messages name the block index.
+        blocks = normalize_blocks(args.get("blocks"))
+        body = str(args.get("body") or "").strip() or blocks_to_text(blocks)
+        if not body:
+            raise ValueError("post_finding needs either `body` or `blocks`")
         doc2 = {
             "id": f"ac-{uuid.uuid4().hex[:12]}",
             "bugHumanId": hid,
             # Named from the token, never the request: an agent posts as the account that connected it.
             "actor": f"{user.get('name', 'Agent')} (agent)",
             "kind": args.get("kind") or "comment",
-            "body": str(args["body"]).strip(),
+            "body": body,
             "at": now_ms(),
             "source": "agent",
+            "blocks": blocks,
         }
         await comments_col.insert_one(dict(doc2))
         doc2.pop("_id", None)
