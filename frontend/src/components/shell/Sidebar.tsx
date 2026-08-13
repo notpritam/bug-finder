@@ -34,6 +34,7 @@ export type SidebarView =
   | "reported"
   | "drafts"
   | "initiatives"
+  | "teams"
   | "insights"
   | "connect"
   | "profile"
@@ -164,6 +165,13 @@ export function Sidebar({
               count={initiativeCount}
               active={view === "initiatives"}
               onClick={() => onView("initiatives")}
+            />
+            <NavRow
+              collapsed={collapsed}
+              icon={<Users className="size-[17px]" />}
+              label="Teams"
+              active={view === "teams"}
+              onClick={() => onView("teams")}
             />
             <NavRow
               collapsed={collapsed}

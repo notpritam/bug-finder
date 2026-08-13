@@ -43,6 +43,7 @@ import { InitiativeDetail } from "@/components/initiatives/InitiativeDetail";
 import { InsightsPage } from "@/components/insights/InsightsPage";
 import { AdminPage } from "@/components/admin/AdminPage";
 import { ConnectPage } from "@/components/connect/ConnectPage";
+import { TeamsPage } from "@/components/teams/TeamsPage";
 import { ProfilePage } from "@/components/profile/ProfilePage";
 import { listInitiatives, type Initiative } from "@/lib/initiatives";
 
@@ -83,6 +84,7 @@ const VIEW_TO_PATH: Record<SidebarView, string> = {
   mine: "/sessions/mine",
   drafts: "/drafts",
   initiatives: "/initiatives",
+  teams: "/teams",
   insights: "/insights",
   connect: "/connect",
   profile: "/profile",
@@ -408,7 +410,7 @@ function Shell({
   const activeView: SidebarView =
     seg[0] === "bugs"
       ? (PATH_TO_VIEW[seg[1]] ?? "all")
-      : ((["drafts", "initiatives", "insights", "connect", "profile", "admin"] as const).find((v) => v === seg[0]) ?? "all");
+      : ((["drafts", "initiatives", "teams", "insights", "connect", "profile", "admin"] as const).find((v) => v === seg[0]) ?? "all");
 
   /** Mutate one bug, appending a history event, and persist it. */
   const amendBug = (id: string, patch: Partial<Bug>, historyDetail: string | null) => {
@@ -753,6 +755,7 @@ function Shell({
             path="/insights"
             element={user ? <InsightsPage bugs={bugs} initiatives={initiatives} /> : <Navigate to="/auth" replace />}
           />
+          <Route path="/teams" element={<TeamsPage user={user} />} />
           <Route path="/connect" element={<ConnectPage user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} onUpdated={onAuthed} />} />
           <Route path="/admin" element={user ? <AdminPage user={user} /> : <Navigate to="/auth" replace />} />
