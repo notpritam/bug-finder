@@ -16,13 +16,20 @@ releases_col = db["bf_extension_release"]
 #: bf_extension_release overrides it, so a release can be announced without redeploying the API —
 #: the dashboard and the extension ship on different clocks and always will.
 FALLBACK = {
-    "version": "0.2.3",
+    "version": "0.2.4",
     # Served by the dashboard, not GitHub: the extension repo is private, so a release link
     # 404s for every person it would be shared with. The dashboard is the one place everyone
     # already has access to — they need it to see the bug they just filed.
-    "downloadUrl": "/bug-finder-0.2.3.zip",
+    "downloadUrl": "/bug-finder-0.2.4.zip",
     "installUrl": "/connect",
-    "notes": "Finds out when it is out of date — a build loaded unpacked is never updated by Chrome.",
+    "notes": (
+        "Keeps the two minutes before you pressed Record even if you refresh the page first. "
+        "Also pins the extension ID, so remove any older Bug Finder before loading this one — "
+        "Chrome treats it as a separate extension, and two copies would both try to record."
+    ),
+    # 0.2.4 is the first build with a `key`, so it is the first one whose ID is stable. Anything
+    # older installed unpacked has a path-derived ID that no update can ever reach; the note above
+    # is the only migration path those installs have.
     "minSupported": "0.2.0",
 }
 
