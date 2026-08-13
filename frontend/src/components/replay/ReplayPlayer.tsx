@@ -424,6 +424,24 @@ function Timeline({
           </button>
         ))}
 
+        {/* Annotation pins — added after filing, so drawn OUTLINED where a capture marker is
+            filled. Same track, because a reader wants one timeline; different weight, because
+            "the reporter saw this happen" and "someone marked this in triage" are different
+            claims and a reader deciding what to trust needs to tell them apart at a glance. */}
+        {(bug.annotations ?? []).map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => clock.seek(Math.max(0, a.t))}
+            className={cn("absolute -top-2 z-10 -translate-x-1/2 transition-opacity", !inTrim(a.t) && "opacity-30")}
+            style={{ left: `${(Math.max(0, a.t) / duration) * 100}%` }}
+            aria-label={`Annotation by ${a.by.name}: ${a.label} ${a.t < 0 ? "before recording started" : `at ${formatOffset(a.t)}`}`}
+            title={`${a.label} · ${a.t < 0 ? "before recording" : formatOffset(a.t)} · added by ${a.by.name}`}
+          >
+            <Flag className="size-3" style={{ color: "var(--ev-marker)" }} />
+          </button>
+        ))}
+
         {/* the scrub surface — the only nested content is presentation */}
         <div
           role="slider"

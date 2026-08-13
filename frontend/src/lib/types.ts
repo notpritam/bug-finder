@@ -29,6 +29,29 @@ export interface BugMarker {
   kind?: "user" | "error";
 }
 
+/**
+ * A flag placed on a session AFTER it was filed.
+ *
+ * Kept apart from `BugMarker` on purpose, and the distinction is not cosmetic. A marker is capture:
+ * it is what the reporter flagged while it was happening, or an error the recording caught, and the
+ * server refuses to let the UI rewrite it. An annotation is somebody's later reading of the same
+ * recording — true of the reviewer, not of the session. Merging them would make "the reporter saw
+ * this happen" indistinguishable from "someone thought this looked wrong in triage", on a record
+ * other people make decisions from.
+ *
+ * They render on one timeline because a reader wants one timeline; the outline versus the fill is
+ * what keeps the two claims apart.
+ */
+export interface Annotation {
+  id: string;
+  /** Replay-clock ms. Negative through the pre-roll — often exactly where the cause is. */
+  t: number;
+  label: string;
+  by: { id?: string; name: string };
+  at: number;
+  editedAt?: number;
+}
+
 /** One navigation captured during the recording — full load or SPA route change. */
 export interface BugVisit {
   t: number;
@@ -126,7 +149,7 @@ export type ReplayEvent =
 export interface BugEvent {
   id: string;
   actor: string;
-  kind: "created" | "status" | "comment" | "assigned" | "edited";
+  kind: "created" | "status" | "comment" | "assigned" | "edited" | "annotated";
   detail: string;
   at: number;
   /** Set on `edited`: which field changed and what it held before. Structured rather than
@@ -156,6 +179,9 @@ export interface Bug extends DeepCapture {
   scenario: "generic";
   replay: ReplayEvent[];
   markers: BugMarker[];
+  /** Flags added after filing. Absent on every session filed before this existed, which is why
+   *  every reader must treat it as optional rather than assuming an empty array. */
+  annotations?: Annotation[];
   visits: BugVisit[];
   console: ConsoleEntry[];
   network: NetEntry[];

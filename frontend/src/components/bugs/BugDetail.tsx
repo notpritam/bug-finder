@@ -2,11 +2,18 @@
 // ABOUTME: (the PostHog-style core), then description, reporter notes, and the bug's history.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bot, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Send, StickyNote } from "lucide-react";
-import type { Bug, BugEvent, BugSeverity, BugStatus, Reporter } from "@/lib/types";
+import { ArrowLeft, Bot, Clock, ExternalLink, Flag, Link2, Link as LinkIcon, Pencil, Plus, Send, StickyNote, Trash2, X } from "lucide-react";
+import type { Annotation, Bug, BugEvent, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import { ENV_META, PRESET_TAGS, type Env } from "@/lib/meta";
 import type { Initiative } from "@/lib/initiatives";
-import { agentShareUrl, fetchAgentComments, type AgentComment } from "@/lib/bugs-api";
+import {
+  addAnnotation,
+  agentShareUrl,
+  deleteAnnotation,
+  editAnnotation,
+  fetchAgentComments,
+  type AgentComment,
+} from "@/lib/bugs-api";
 import { CommentBlocks } from "./CommentBlocks";
 import { FollowButton } from "@/components/updates/FollowButton";
 import { cn, formatDateTime, formatDuration, formatOffset, hostOf, relativeTime } from "@/lib/utils";
@@ -38,6 +45,7 @@ export function BugDetail({
   onInitiativeChange,
   onTagsChange,
   onEdit,
+  onAnnotationsChange,
   onRetrySync,
 }: {
   bug: Bug;
@@ -57,6 +65,10 @@ export function BugDetail({
   onTagsChange: (id: string, tags: string[]) => void;
   /** Free-text edits. Any signed-in user may make them; history records each field. */
   onEdit: (id: string, patch: Partial<Bug>) => void;
+  /** Local-cache reconciliation ONLY — the annotation endpoints have already written to the
+   *  server by the time this fires. Deliberately not routed through `onEdit`, whose PATCH would
+   *  be rejected: `annotations` is not an editable field, and must not become one. */
+  onAnnotationsChange?: (id: string, annotations: Annotation[]) => void;
   /** Re-publish this bug's server snapshot — wired to the "Not synced" banner's Retry. */
   onRetrySync?: (id: string) => Promise<void>;
 }) {
@@ -401,36 +413,10 @@ export function BugDetail({
           </div>
         </div>
 
-        {/* Key moments — the reporter's flags + auto error markers, one click from any of them */}
-        {bug.markers.length > 0 && (
-          <div className="soft-fade flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-card">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
-              Key moments
-            </span>
-            {[...bug.markers]
-              .sort((a, b) => a.t - b.t)
-              .map((m, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => {
-                    clock.pause();
-                    clock.seek(m.t);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
-                  title="Jump the replay to this moment"
-                >
-                  <Flag
-                    className="size-3"
-                    style={{ color: m.kind === "error" ? "var(--ev-error)" : "var(--ev-marker)" }}
-                    fill="currentColor"
-                  />
-                  <span className="font-mono text-[10.5px] text-muted-foreground">{formatOffset(m.t)}</span>
-                  {m.label ?? "Marker"}
-                </button>
-              ))}
-          </div>
-        )}
+        {/* Key moments — what the recording caught, plus what people have flagged since.
+            Both on one strip because a reader wants one timeline; filled pins are capture and
+            outlined ones are somebody's later reading, so the two claims stay tellable apart. */}
+        <KeyMoments bug={bug} me={me} clock={clock} onChange={onAnnotationsChange} />
 
         {/* Below-the-fold cards */}
         <div className="grid grid-cols-1 gap-4 pb-10 lg:grid-cols-3">
@@ -659,5 +645,242 @@ function StatusSelect({ status, onChange }: { status: BugStatus; onChange: (s: B
         ))}
       </select>
     </label>
+  );
+}
+
+/**
+ * The strip under the player: everything worth jumping to, from both sources.
+ *
+ * Markers are capture — the reporter's live flags and the errors the recording caught — and the
+ * server will not let anything here rewrite them. Annotations are what people added afterwards, and
+ * they are a different kind of claim: true of the reviewer, not of the session. So they share a
+ * timeline (a reader wants one) and stay visually separable (a filled pin happened; an outlined one
+ * is an opinion about what happened).
+ *
+ * Writes go straight to the annotation endpoints rather than through the bug patch, which only
+ * accepts the editable metadata fields. The list is held locally and reconciled optimistically so
+ * pinning a moment does not wait on a round trip — but a failure puts the text back in the box with
+ * the server's own message, because a note the reviewer believes they left and nobody can see is
+ * worse than one that visibly refused to save.
+ */
+function KeyMoments({
+  bug,
+  me,
+  clock,
+  onChange,
+}: {
+  bug: Bug;
+  me: Reporter | null;
+  clock: ReturnType<typeof useReplayClock>;
+  onChange?: (bugId: string, annotations: Annotation[]) => void;
+}) {
+  const [annotations, setAnnotations] = useState<Annotation[]>(bug.annotations ?? []);
+  const [adding, setAdding] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // A different session mounted into the same component, or the server copy arrived after hydration.
+  useEffect(() => {
+    setAnnotations(bug.annotations ?? []);
+  }, [bug.id, bug.annotations]);
+
+  useEffect(() => {
+    if (adding !== null || editing) inputRef.current?.focus();
+  }, [adding, editing]);
+
+  const commit = (next: Annotation[]) => {
+    setAnnotations(next);
+    onChange?.(bug.id, next);
+  };
+
+  const startAdding = () => {
+    clock.pause();
+    setAdding(Math.round(clock.t));
+    setDraft("");
+    setError(null);
+  };
+
+  const cancel = () => {
+    setAdding(null);
+    setEditing(null);
+    setDraft("");
+    setError(null);
+  };
+
+  const save = async () => {
+    const label = draft.trim();
+    if (!label || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (editing) {
+        const updated = await editAnnotation(bug.humanId, editing, label);
+        commit(annotations.map((a) => (a.id === editing ? { ...a, ...updated } : a)));
+      } else if (adding !== null) {
+        commit([...annotations, await addAnnotation(bug.humanId, adding, label)]);
+      }
+      cancel();
+    } catch (err) {
+      // Deliberately leaves `draft` intact — retyping a lost note is the worst outcome here.
+      setError(err instanceof Error ? err.message : "Could not save that.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (a: Annotation) => {
+    const previous = annotations;
+    commit(annotations.filter((x) => x.id !== a.id)); // optimistic — deletes feel bad when they lag
+    try {
+      await deleteAnnotation(bug.humanId, a.id);
+    } catch (err) {
+      commit(previous);
+      setError(err instanceof Error ? err.message : "Could not delete that.");
+    }
+  };
+
+  // One ordering across both kinds, so the strip reads left-to-right as the recording plays.
+  const pins = [
+    ...bug.markers.map((m) => ({ kind: "marker" as const, t: m.t, label: m.label ?? "Marker", isError: m.kind === "error" })),
+    ...annotations.map((a) => ({ kind: "annotation" as const, t: a.t, label: a.label, annotation: a })),
+  ].sort((a, b) => a.t - b.t);
+
+  const composing = adding !== null || editing !== null;
+  if (!pins.length && !me && !composing) return null;
+
+  return (
+    <div className="soft-fade flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-card">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
+        Key moments
+      </span>
+
+      {pins.map((pin) =>
+        pin.kind === "marker" ? (
+          <button
+            key={`m-${pin.t}-${pin.label}`}
+            type="button"
+            onClick={() => {
+              clock.pause();
+              clock.seek(pin.t);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+            title="Recorded during the session — jump the replay here"
+          >
+            <Flag
+              className="size-3"
+              style={{ color: pin.isError ? "var(--ev-error)" : "var(--ev-marker)" }}
+              fill="currentColor"
+            />
+            <span className="font-mono text-[10.5px] text-muted-foreground">{formatOffset(pin.t)}</span>
+            {pin.label}
+          </button>
+        ) : (
+          <span
+            key={pin.annotation.id}
+            className="group inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                clock.pause();
+                clock.seek(pin.t);
+              }}
+              className="inline-flex items-center gap-1.5"
+              title={`Added by ${pin.annotation.by.name} ${relativeTime(pin.annotation.at)}${
+                pin.annotation.editedAt ? " · edited" : ""
+              }`}
+            >
+              {/* Outlined, not filled: this is somebody's reading, not something the recording saw. */}
+              <Flag className="size-3" style={{ color: "var(--ev-marker)" }} />
+              <span className="font-mono text-[10.5px] text-muted-foreground">{formatOffset(pin.t)}</span>
+              {pin.annotation.label}
+              <span className="text-[10px] text-muted-foreground/70">· {pin.annotation.by.name.split(" ")[0]}</span>
+            </button>
+            {me?.id && pin.annotation.by.id === me.id && (
+              <span className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(pin.annotation.id);
+                    setAdding(null);
+                    setDraft(pin.annotation.label);
+                    setError(null);
+                  }}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  aria-label={`Reword "${pin.annotation.label}"`}
+                  title="Reword"
+                >
+                  <Pencil className="size-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void remove(pin.annotation)}
+                  className="rounded p-0.5 text-muted-foreground hover:text-[var(--ev-error)]"
+                  aria-label={`Delete "${pin.annotation.label}"`}
+                  title="Delete"
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </span>
+            )}
+          </span>
+        ),
+      )}
+
+      {composing ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/50 bg-background px-2.5 py-1">
+          <Flag className="size-3" style={{ color: "var(--ev-marker)" }} />
+          <span className="font-mono text-[10.5px] text-muted-foreground">
+            {formatOffset(editing ? (annotations.find((a) => a.id === editing)?.t ?? 0) : (adding ?? 0))}
+          </span>
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void save();
+              }
+              if (e.key === "Escape") cancel();
+            }}
+            maxLength={200}
+            placeholder="What happens here?"
+            aria-label="Annotation text"
+            className="w-52 bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground/60"
+          />
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={!draft.trim() || busy}
+            className="rounded px-1 text-[11px] font-semibold text-primary disabled:opacity-40"
+          >
+            {busy ? "Saving…" : editing ? "Save" : "Pin"}
+          </button>
+          <button type="button" onClick={cancel} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label="Cancel">
+            <X className="size-3" />
+          </button>
+        </span>
+      ) : me ? (
+        <button
+          type="button"
+          onClick={startAdding}
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border/70 px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+          title="Pin the moment the replay is paused on"
+        >
+          <Plus className="size-3" />
+          Flag this moment
+        </button>
+      ) : null}
+
+      {error && (
+        <span role="alert" className="text-[11.5px] font-medium text-[var(--ev-error)]">
+          {error}
+        </span>
+      )}
+    </div>
   );
 }

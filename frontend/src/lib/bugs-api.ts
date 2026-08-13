@@ -1,6 +1,6 @@
 // ABOUTME: Client for the dashboard's own bug endpoints — publish snapshots, poll for
 // ABOUTME: agent comments, and copy the "agent share" URL that identifies this bug.
-import type { Bug } from "./types";
+import type { Annotation, Bug } from "./types";
 import { authToken } from "./auth";
 
 const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
@@ -208,3 +208,48 @@ export async function postComment(humanId: string, body: string): Promise<AgentC
     return null;
   }
 }
+
+/* ---------------- annotations ---------------- */
+
+/**
+ * Flags added to a session after it was filed.
+ *
+ * These go to the server directly rather than through the bug snapshot, and that is the point: a
+ * snapshot PUT rewrites the whole document, which is how two people editing one session used to
+ * silently revert each other. Each call here appends, edits, or removes exactly one entry.
+ *
+ * Every one throws on failure. An annotation that fails to save must not look like one that saved —
+ * the caller shows the error and puts the text back, because the alternative is a reviewer who
+ * believes they left a note that nobody will ever see.
+ */
+async function annotationCall<T>(path: string, init: RequestInit): Promise<T> {
+  if (!BASE) throw new Error("No backend configured — annotations need one.");
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init.headers ?? {}) },
+  });
+  if (!res.ok) {
+    // The server's own words where it gave any — "Sign in to do that." and "You can only edit
+    // annotations you added." are both better than anything this layer could invent.
+    const detail = await res.json().then((b) => b?.detail).catch(() => null);
+    throw new Error(typeof detail === "string" ? detail : `Could not save that (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
+export const addAnnotation = (humanId: string, t: number, label: string): Promise<Annotation> =>
+  annotationCall<Annotation>(`/api/bugs/${encodeURIComponent(humanId)}/annotations`, {
+    method: "POST",
+    body: JSON.stringify({ t: Math.round(t), label }),
+  });
+
+export const editAnnotation = (humanId: string, id: string, label: string): Promise<Annotation> =>
+  annotationCall<Annotation>(`/api/bugs/${encodeURIComponent(humanId)}/annotations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ label }),
+  });
+
+export const deleteAnnotation = (humanId: string, id: string): Promise<{ ok: string }> =>
+  annotationCall<{ ok: string }>(`/api/bugs/${encodeURIComponent(humanId)}/annotations/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });

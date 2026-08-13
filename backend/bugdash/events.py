@@ -26,6 +26,7 @@ EVENT_KINDS = (
     "severity",
     "assignment",
     "evidence",     # new capture data attached to a session that already existed
+    "annotation",   # someone pinned a moment on the replay after it was filed
 )
 
 #: Events older than this are gone. The feed answers "what changed since I looked", not "what ever

@@ -12,7 +12,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import type { Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
+import type { Annotation, Bug, BugSeverity, BugStatus, Draft, Reporter } from "@/lib/types";
 import { ANONYMOUS, isAdmin, listAccountUsers, loadSession, signOut, verifySession, type AuthUser } from "@/lib/auth";
 import {
   bugFromDraft,
@@ -449,6 +449,25 @@ function Shell({
     );
   };
 
+  /**
+   * Reconcile the local copy after an annotation was written.
+   *
+   * Not `amendBug`. That routes the change through `patchBug`, which the server refuses for
+   * `annotations` — it is not an editable field and must not become one, because the same route
+   * guards `markers` and every other capture field. The annotation endpoints have already done the
+   * write by the time this fires, so all that is left is to keep React state and IndexedDB in step.
+   */
+  const changeAnnotations = (id: string, annotations: Annotation[]) => {
+    setBugs((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const next: Bug = { ...b, annotations, updatedAt: Date.now() };
+        void storeBugLocal(next);
+        return next;
+      }),
+    );
+  };
+
   const changeStatus = (id: string, status: BugStatus) =>
     amendBug(id, { status }, `changed status to ${status.replace("_", " ")}`);
   const changeSeverity = (id: string, severity: BugSeverity) =>
@@ -679,6 +698,7 @@ function Shell({
                 onInitiativeChange={changeInitiative}
                 onTagsChange={changeTags}
                 onEdit={editBug}
+                onAnnotationsChange={changeAnnotations}
                 onHydrateBug={hydrateBug}
                 onRetrySync={retrySync}
               />
@@ -841,6 +861,7 @@ function BugRoute({
   onInitiativeChange,
   onTagsChange,
   onEdit,
+  onAnnotationsChange,
   onHydrateBug,
   onRetrySync,
 }: {
@@ -856,6 +877,7 @@ function BugRoute({
   onInitiativeChange: (id: string, initiative: Initiative | null) => void;
   onTagsChange: (id: string, tags: string[]) => void;
   onEdit: (id: string, patch: Partial<Bug>) => void;
+  onAnnotationsChange: (id: string, annotations: Annotation[]) => void;
   onHydrateBug: (full: Bug) => void;
   onRetrySync: (id: string) => Promise<void>;
 }) {
@@ -930,6 +952,7 @@ function BugRoute({
       onInitiativeChange={onInitiativeChange}
       onTagsChange={onTagsChange}
       onEdit={onEdit}
+      onAnnotationsChange={onAnnotationsChange}
       onRetrySync={onRetrySync}
     />
   );

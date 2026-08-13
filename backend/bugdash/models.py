@@ -127,3 +127,20 @@ class InitiativePatch(BaseModel):
     status: str | None = None
     owner: InitiativeOwner | None = None
     tags: list[str] | None = None
+
+
+class AnnotationInput(BaseModel):
+    """A flag placed on an already-filed session.
+
+    `t` has no lower bound on purpose. The replay clock runs negative through the pre-roll window —
+    the two minutes captured before the reporter pressed Record — and that is very often exactly
+    where the thing worth flagging is. A `ge=0` here would make the earliest evidence unpinnable.
+    """
+    t: float
+    label: str = Field(min_length=1, max_length=200)
+
+
+class AnnotationPatch(BaseModel):
+    """Only the wording. `t` is fixed once placed: moving it would silently repoint the text at a
+    different frame, and everyone who already read it saw the original pairing."""
+    label: str = Field(min_length=1, max_length=200)

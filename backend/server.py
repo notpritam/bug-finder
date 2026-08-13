@@ -11,8 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from bugdash import (
-    admin, ai, auth, bugs, comments, domtime, events, extension, initiatives, mcp, mcp_server,
-                     oauth, summary)
+    admin, ai, annotations, auth, bugs, comments, domtime, events, extension, initiatives, mcp,
+                     mcp_server, oauth, summary)
 
 app = FastAPI(title="BugDash AI")
 
@@ -43,6 +43,8 @@ async def health() -> dict[str, str]:
 # Order is cosmetic (paths don't overlap) — kept in "reader" order: evidence surfaces first.
 app.include_router(auth.router)
 app.include_router(bugs.router)
+# After bugs: its paths nest under /api/bugs/{id}/ and it imports bugs' LIGHT projection.
+app.include_router(annotations.router)
 app.include_router(domtime.router)
 app.include_router(summary.router)
 app.include_router(comments.router)
