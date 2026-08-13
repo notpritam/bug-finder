@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bugdash import (
     admin, ai, annotations, auth, bugs, comments, domtime, events, extension, initiatives, mcp,
-                     mcp_server, oauth, summary)
+                     mcp_server, oauth, summary, teams)
 
 app = FastAPI(title="BugDash AI")
 
@@ -53,6 +53,7 @@ app.include_router(extension.router)
 app.include_router(mcp.router)
 app.include_router(ai.router)
 app.include_router(initiatives.router)
+app.include_router(teams.router)
 app.include_router(admin.router)
 # The MCP endpoint agents connect to. Mounted at /mcp, outside /api, because that is the URL a
 # person pastes into their client.

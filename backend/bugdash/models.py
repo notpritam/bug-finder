@@ -144,3 +144,19 @@ class AnnotationPatch(BaseModel):
     """Only the wording. `t` is fixed once placed: moving it would silently repoint the text at a
     different frame, and everyone who already read it saw the original pairing."""
     label: str = Field(min_length=1, max_length=200)
+
+
+class TeamCreate(BaseModel):
+    """A team people join — Frontend, Retention, NDR, Growth.
+
+    No `members` field: you join a team, or somebody joins it themselves. Accepting a member list
+    at creation would let one person put another in a team without their knowing, and the roster is
+    what decides who sees which sessions.
+    """
+    name: str = Field(min_length=1, max_length=60)
+    description: str = ""
+
+
+class TeamPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    description: str | None = None

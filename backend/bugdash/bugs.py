@@ -21,6 +21,7 @@ counters_col = db["counters"]
 #: handed out, leaving a window in which every concurrent caller allocated its own.
 allocations_col = db["bug_allocations"]
 from .evidence import dedupe_console, network_index
+from .teams import resolve_membership
 from .models import BugPayload
 
 router = APIRouter()
@@ -142,6 +143,20 @@ async def publish_bug(
             "Allocate a fresh id via POST /api/bugs/allocate.",
         )
     payload["_updatedAt"] = now_ms()
+    # Stamp the reporter's teams onto the session, so a team can look at its own work.
+    #
+    # Derived here rather than asked of the client: the reporter does not choose a team per capture,
+    # they belong to teams, and making it a field on the form would be one more thing to get wrong
+    # while filing a bug. Resolved through the same fallback everything else uses, so an account
+    # that still carries only the legacy free-text `team` string is stamped correctly too.
+    #
+    # Only on FIRST publish. The client republishes the whole snapshot on every mutation, and
+    # re-deriving would silently move a session between teams whenever its reporter changed theirs.
+    if not prior and not payload.get("teamIds"):
+        reporter_id = (payload.get("reporter") or {}).get("id")
+        if reporter_id:
+            reporter = await db["users"].find_one({"id": reporter_id}, {"_id": 0, "teamIds": 1, "team": 1})
+            payload["teamIds"] = await resolve_membership(reporter)
     try:
         await bugs_col.update_one({"humanId": human_id}, {"$set": payload}, upsert=True)
     except DocumentTooLarge:
@@ -373,7 +388,7 @@ LIGHT = {"_id": 0, **{f: 0 for f in HEAVY_FIELDS}}
 # what was recorded, and nothing in the UI may rewrite it.
 EDITABLE_FIELDS = {
     "title", "description", "status", "severity", "assignee",
-    "tags", "initiative", "initiativeId", "category", "env", "jobId",
+    "tags", "initiative", "initiativeId", "category", "env", "jobId", "teamIds",
 }
 
 
@@ -411,6 +426,7 @@ async def list_bugs(
     assignee: str | None = Query(None, description="Only sessions assigned to this account id"),
     status: str | None = Query(None),
     initiativeId: str | None = Query(None),
+    teamId: str | None = Query(None, description="Only sessions belonging to this team"),
 ) -> list[dict[str, Any]]:
     """Every filed session, newest first, without the heavy evidence.
 
@@ -427,6 +443,10 @@ async def list_bugs(
         q["status"] = status
     if initiativeId:
         q["initiativeId"] = initiativeId
+    # Membership is a list: a session filed by someone in both Frontend and Retention belongs
+    # to both, and a plain equality match would find it under neither.
+    if teamId:
+        q["teamIds"] = teamId
     return [doc async for doc in bugs_col.find(q, LIGHT).sort("createdAt", -1).limit(limit)]
 
 
