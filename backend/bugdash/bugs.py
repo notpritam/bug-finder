@@ -16,6 +16,10 @@ from .evidence_store import guard_offloaded, resolve_evidence
 from .storage_compact import expand_storage_changes
 
 counters_col = db["counters"]
+#: draftId -> humanId, claimed atomically at allocation. Exists because the bug row itself cannot
+#: serve as the reservation: it is not written until the client PUTs, long after the number is
+#: handed out, leaving a window in which every concurrent caller allocated its own.
+allocations_col = db["bug_allocations"]
 from .evidence import dedupe_console, network_index
 from .models import BugPayload
 
@@ -72,18 +76,46 @@ async def allocate_bug_id(
     # operator and turn this lookup into a query oracle over other captures' draftIds.
     if not isinstance(draft_id, str):
         draft_id = None
-    if draft_id:
-        existing = await bugs_col.find_one({"draftId": draft_id}, {"humanId": 1})
-        if existing and existing.get("humanId"):
-            return {"humanId": existing["humanId"], "reused": True}
+
     await _seed_counter()
+
+    # No draft to key on — nothing to be idempotent about, so just take the next number.
+    if not draft_id:
+        doc = await counters_col.find_one_and_update(
+            {"_id": "bugs"}, {"$inc": {"seq": 1}}, return_document=ReturnDocument.AFTER, upsert=True,
+        )
+        return {"humanId": f"BF-{doc['seq']}", "reused": False}
+
+    # Bugs allocated before this reservation existed are keyed only by the row itself.
+    existing = await bugs_col.find_one({"draftId": draft_id}, {"humanId": 1})
+    if existing and existing.get("humanId"):
+        return {"humanId": existing["humanId"], "reused": True}
+
+    # ATOMIC, and it has to be. The previous shape was check-then-act — look for a bug carrying
+    # this draftId, and allocate if absent — which cannot work, because the bug row is not written
+    # until the client PUTs it, several network round trips later. Every caller inside that window
+    # therefore saw nothing and burned a fresh number: eight concurrent allocations for one
+    # recording returned BF-129 through BF-136, which is precisely the "one submission, several
+    # jobs" report. No client-side guard could close it (the dashboard's was a React ref — per tab,
+    # per page load, useless across two tabs or a reload), because the server was answering
+    # honestly every time it was asked.
+    #
+    # So: take a number, then try to CLAIM it for this draftId. `$setOnInsert` with `upsert` is a
+    # single atomic operation — the first caller's candidate is stored and handed back to everyone
+    # who follows. Losers simply never use theirs, which leaves a gap in the sequence. Gaps are
+    # free; a recording filed twice is not.
     doc = await counters_col.find_one_and_update(
-        {"_id": "bugs"},
-        {"$inc": {"seq": 1}},
-        return_document=ReturnDocument.AFTER,
-        upsert=True,
+        {"_id": "bugs"}, {"$inc": {"seq": 1}}, return_document=ReturnDocument.AFTER, upsert=True,
     )
-    return {"humanId": f"BF-{doc['seq']}", "reused": False}
+    candidate = f"BF-{doc['seq']}"
+    claim = await allocations_col.find_one_and_update(
+        {"_id": draft_id},
+        {"$setOnInsert": {"humanId": candidate, "at": now_ms()}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    won = claim["humanId"] == candidate
+    return {"humanId": claim["humanId"], "reused": not won}
 
 
 # DELIBERATELY UNAUTHENTICATED — see the note on allocate above. A guest who can allocate a number
