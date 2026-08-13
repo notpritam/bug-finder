@@ -5,7 +5,7 @@ import { envFromUrl } from "./meta";
 import { idb } from "./store";
 import { uploadJson } from "./storage-api";
 import { broadcast } from "./sync";
-import { publishBug, unpublishBug } from "./bugs-api";
+import { allocateHumanId, publishBug, PublishFailed, unpublishBug } from "./bugs-api";
 
 const DRAFTS_KEY = "bf.drafts";
 const SUBMITTED_KEY = "bf.submitted";
@@ -156,11 +156,39 @@ export async function publishStoredBug(bug: Bug): Promise<SyncResult> {
   let syncState: Bug["syncState"];
   let syncError: string | undefined;
   let ok: boolean;
+  let published = bug;
   try {
-    const delivered = await publishBug(await shrinkForServer(bug));
+    const delivered = await publishBug(await shrinkForServer(published));
     syncState = delivered ? "synced" : "local-only"; // false ⇔ no backend configured
     ok = true;
   } catch (err) {
+    // 409 = this number already belongs to a DIFFERENT capture. Only one thing produces that: a
+    // bug filed while the server was unreachable, whose humanId was guessed locally from whatever
+    // this browser happened to hold, and which has since collided with a real one.
+    //
+    // Retrying as-is can never succeed — the colliding number is baked into the row, so the
+    // "Not synced · Retry" button would refuse forever and the capture would be stranded in one
+    // browser. Take a real number instead and publish under that. Allocation is keyed on draftId
+    // and atomic, so this yields one id no matter how many tabs or retries reach it at once.
+    //
+    // Renumbering is safe precisely because the bug never synced: nobody else has ever been able
+    // to see it, so no one is holding the old number.
+    if (err instanceof PublishFailed && err.status === 409 && bug.draftId) {
+      try {
+        const fresh = await allocateHumanId(bug.draftId);
+        if (fresh && fresh !== bug.humanId) {
+          published = { ...bug, humanId: fresh };
+          await publishBug(await shrinkForServer(published));
+          await idb.delete("bugs", bug.id);
+          const renumbered: Bug = { ...published, syncState: "synced", syncError: undefined };
+          await idb.put("bugs", renumbered);
+          broadcast({ kind: "bug-put", bug: renumbered });
+          return { bug: renumbered, ok: true };
+        }
+      } catch {
+        // Fall through to the normal failure path — the original 409 is the honest error to show.
+      }
+    }
     console.error("[bug-finder] snapshot did not reach the server:", err);
     const offline = typeof navigator !== "undefined" && navigator.onLine === false;
     // A network-level failure (offline, DNS, CORS-dead server) is "local-only": nothing
