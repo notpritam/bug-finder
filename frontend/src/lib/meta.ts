@@ -62,13 +62,25 @@ export const PRESET_TAGS = [
 
 export type Env = "prod" | "canary" | "staging" | "ephemeral" | "local" | "dev";
 
+/**
+ * Environment is CONTEXT, not status — so it no longer carries a hue.
+ *
+ * These six colours used to be hardcoded hexes that were byte-identical to the event tokens:
+ * prod #ef4444 === --ev-error, canary #f59e0b === --ev-warn, staging #8b5cf6 === --ev-nav,
+ * ephemeral #14b8a6 === --ev-net, dev #0ea5e9 === --ev-input. So on a session page a red dot
+ * meant "Production" in the header and "error" in the inspector a few inches below it. Colour was
+ * not reserved for data; it was reserved for three schemas that overwrote each other.
+ *
+ * `color` is kept on the type and points at a token, because a couple of call sites still want a
+ * tint — but prod deliberately reuses the same neutral as the rest. Environment reads as a label.
+ */
 export const ENV_META: Record<Env, { label: string; color: string }> = {
-  prod: { label: "Production", color: "#ef4444" },
-  canary: { label: "Canary", color: "#f59e0b" },
-  staging: { label: "Staging", color: "#8b5cf6" },
-  ephemeral: { label: "Ephemeral", color: "#14b8a6" },
-  local: { label: "Local", color: "#64748b" },
-  dev: { label: "Dev", color: "#0ea5e9" },
+  prod: { label: "Production", color: "var(--foreground)" },
+  canary: { label: "Canary", color: "var(--muted-foreground)" },
+  staging: { label: "Staging", color: "var(--muted-foreground)" },
+  ephemeral: { label: "Ephemeral", color: "var(--muted-foreground)" },
+  local: { label: "Local", color: "var(--muted-foreground)" },
+  dev: { label: "Dev", color: "var(--muted-foreground)" },
 };
 export const ENVS = Object.keys(ENV_META) as Env[];
 

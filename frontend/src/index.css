@@ -44,37 +44,41 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-border: var(--sidebar-border);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: var(--radius);
-  --radius-2xl: var(--radius);
+  /* A real scale. rounded-lg / -xl / -2xl all resolved to 8px, so 141 call sites believed they
+     were choosing between levels that rendered identically — the literal "everything is
+     rounded-lg" tell. Distinct values make the intent those authors already expressed start
+     showing, with no component edits. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
 }
 
 :root {
   color-scheme: light;
   --radius: 0.5rem;
 
-  --background: oklch(0.941 0.003 264);
+  --background: oklch(0.928 0.006 258);
   --foreground: oklch(0.242 0.006 264);
   --card: oklch(0.998 0 0);
   --card-foreground: oklch(0.242 0.006 264);
-  --popover: oklch(0.998 0 0);
+  --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.242 0.006 264);
 
-  --primary: oklch(0.3 0.008 264);
+  --primary: oklch(0.520 0.170 262);
   --primary-foreground: oklch(0.985 0 0);
 
   --secondary: oklch(0.955 0.003 264);
   --secondary-foreground: oklch(0.31 0.007 264);
   --muted: oklch(0.958 0.003 264);
-  --muted-foreground: oklch(0.556 0.006 264);
+  --muted-foreground: oklch(0.505 0.010 258);
   --accent: oklch(0.944 0.004 264);
   --accent-foreground: oklch(0.3 0.007 264);
   --destructive: oklch(0.585 0.203 26);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.908 0.004 264);
+  --border: oklch(0.878 0.008 258);
   --input: oklch(0.9 0.005 264);
   --ring: oklch(0.3 0.008 264);
 
@@ -84,24 +88,33 @@
   --sidebar-accent: oklch(0.866 0.006 264);
   --sidebar-border: oklch(0.91 0.004 264);
 
-  /* Bug status hues — data, so multi-hued. */
-  --status-open: #2563eb;
-  --status-in_progress: #f59e0b;
-  --status-resolved: #16a34a;
-  --status-not_a_bug: #a1a1aa;
-  --status-wont_fix: #a1a1aa;
+
+  /* One signal ramp, same hues as dark, tuned for a pale ground (L~0.52 / C~0.17). */
+  --sig-red:    oklch(0.550 0.190 25);
+  --sig-amber:  oklch(0.620 0.150 70);
+  --sig-green:  oklch(0.540 0.140 150);
+  --sig-teal:   oklch(0.560 0.110 190);
+  --sig-blue:   oklch(0.540 0.180 255);
+  --sig-violet: oklch(0.540 0.170 300);
+
+  /* Bug status hues — bound to the ramp above; one meaning per hue. */
+  --status-open: var(--sig-blue);
+  --status-in_progress: var(--sig-amber);
+  --status-resolved: var(--sig-green);
+  --status-not_a_bug: var(--muted-foreground);
+  --status-wont_fix: var(--muted-foreground);
 
   /* Replay event hues */
-  --ev-click: #2563eb;
-  --ev-nav: #8b5cf6;
-  --ev-error: #ef4444;
-  --ev-warn: #f59e0b;
-  --ev-net: #14b8a6;
-  --ev-input: #0ea5e9;
-  --ev-marker: #f59e0b;
+  --ev-click: var(--sig-blue);
+  --ev-nav: var(--sig-violet);
+  --ev-error: var(--sig-red);
+  --ev-warn: var(--sig-amber);
+  --ev-net: var(--sig-teal);
+  --ev-input: var(--sig-blue);
+  --ev-marker: var(--sig-amber);
 
-  --shadow-card: 0 1px 2px rgba(17, 18, 23, 0.04), 0 4px 10px rgba(17, 18, 23, 0.045);
-  --shadow-card-hover: 0 4px 12px rgba(17, 18, 23, 0.06), 0 14px 30px rgba(17, 18, 23, 0.1);
+  --shadow-card: 0 1px 2px oklch(0.2 0.02 258 / 0.06), 0 4px 10px oklch(0.2 0.02 258 / 0.08);
+  --shadow-card-hover: 0 4px 12px oklch(0.2 0.02 258 / 0.10), 0 14px 30px oklch(0.2 0.02 258 / 0.12);
   --shadow-pop: 0 8px 28px rgba(17, 18, 23, 0.12), 0 1px 2px rgba(17, 18, 23, 0.05);
   --shadow-panel: 0 14px 50px rgba(17, 18, 23, 0.16);
 
@@ -122,79 +135,113 @@
 .dark {
   color-scheme: dark;
 
-  /* Linear-derived ground. Every value below is a token from the reference control surface;
-     its rules are held here too — no shadows, no gradients, no pure black or white, 1px
-     borders, and colour kept out of the chrome so it only ever means status. */
-  --background: #08090a;
-  --foreground: #e3e5e6;
-  --card: #121314;
-  --card-foreground: #e3e5e6;
-  --popover: #151617;
-  --popover-foreground: #f7f8f8;
+  /* SURFACE LADDER — four planes and two rules, every step >= 3.2pp OKLab lightness.
+     The previous set spanned 12.1pp across eight levels (a 1.7pp average step, against a ~4pp
+     perceptual threshold), so nine of twelve adjacent pairs were indistinguishable: background
+     vs card measured 1.07:1 and the active sidebar row 1.06:1. Nothing read as a layer.
+     This spans 31.1pp and carries real chroma (C~0.012) so it is cool graphite rather than the
+     achromatic grey the old values actually produced. */
+  --canvas:      oklch(0.145 0.010 258);
+  --surface:     oklch(0.215 0.011 258);
+  --raised:      oklch(0.275 0.012 258);
+  --overlay:     oklch(0.325 0.012 258);
+  --line:        oklch(0.355 0.013 258);
+  --line-strong: oklch(0.455 0.014 258);
 
-  /* Inverted fill, as on Linear's own primary buttons. */
-  --primary: #e3e5e6;
-  --primary-foreground: #101112;
+  --background: var(--canvas);
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--raised);
+  --popover-foreground: var(--text-primary);
 
-  --secondary: #151617;
-  --secondary-foreground: #d0d6e0;
-  --muted: #151617;
-  --muted-foreground: #8a8f98;
-  --accent: #171819;
-  --accent-foreground: #f7f8f8;
-  --destructive: #eb5757;
-  --destructive-foreground: #f7f8f8;
+  /* BRAND. --primary used to be #e3e5e6 — byte-identical to --foreground — which made all 131
+     `*-primary` utilities either invisible or actively misleading: `hover:text-primary` was a
+     literal no-op, and the list's active-row bar drew white on white. */
+  --brand:       oklch(0.700 0.150 262);
+  --brand-hover: oklch(0.760 0.140 262);
+  --brand-quiet: oklch(0.320 0.060 262);
+  --primary: var(--brand);
+  --primary-foreground: oklch(0.145 0.030 262);
 
-  --border: #232425;
-  --input: #222324;
-  --ring: #4d5157;
+  --secondary: var(--raised);
+  --secondary-foreground: var(--text-secondary);
+  --muted: var(--raised);
+  --muted-foreground: var(--text-tertiary);
+  --accent: var(--overlay);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--sig-red);
+  --destructive-foreground: oklch(0.145 0.02 25);
 
-  --sidebar: #101112;
-  --sidebar-foreground: #aaafb8;
-  --sidebar-accent: #171819;
-  --sidebar-border: #1b1c1d;
+  --border: var(--line);
+  --input: var(--raised);
+  --ring: var(--brand);
 
-  /* The reference bans shadows outright: depth comes from the ground/panel step and a 1px
-     rule. Neutralised rather than deleted so no component loses its var() reference. */
-  --shadow-card: none;
-  --shadow-card-hover: none;
-  --shadow-pop: none;
-  --shadow-panel: none;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-accent: var(--overlay);
+  --sidebar-border: var(--line);
 
-  /* JSON viewer palette — VS Code "Dark+"-inspired, tuned for dark cards. */
-  --json-bg: #1e1f20;
-  --json-key: #7ee787;
-  --json-string: #a5d6ff;
-  --json-number: #f2cc60;
-  --json-boolean: #ff7b72;
-  --json-null: #d2a8ff;
-  --json-punct: oklch(0.68 0.007 264);
+  /* TEXT — four levels. 316 uses of one grey were covering eight semantic roles. */
+  --text-primary:   oklch(0.955 0.004 258);
+  --text-secondary: oklch(0.780 0.012 258);
+  --text-tertiary:  oklch(0.635 0.016 258);
+  --text-disabled:  oklch(0.500 0.014 258);
+
+  /* ELEVATION, restored. The old dark theme set all four to `none` AND added a blanket rule
+     killing every Tailwind shadow — on the theory that the surface steps would carry depth
+     instead. They measured 1.03-1.07:1, so dark mode had neither elevation nor lines. On a dark
+     ground the top highlight does most of the work; the drop shadow only seats it. */
+  --shadow-card:       inset 0 1px 0 oklch(1 0 0 / 0.045), 0 1px 2px oklch(0 0 0 / 0.55);
+  --shadow-card-hover: inset 0 1px 0 oklch(1 0 0 / 0.07),  0 4px 12px oklch(0 0 0 / 0.6);
+  --shadow-pop:        inset 0 1px 0 oklch(1 0 0 / 0.08),  0 12px 32px oklch(0 0 0 / 0.7);
+  --shadow-panel:      0 24px 64px oklch(0 0 0 / 0.75);
+
+  /* ONE SIGNAL RAMP. Every semantic hue sits at L~0.68 / C~0.15, so no status can out-shout
+     another, and hues are >=40 degrees apart so they survive colour-blindness. */
+  --sig-red:    oklch(0.640 0.160 25);
+  --sig-amber:  oklch(0.760 0.150 70);
+  --sig-green:  oklch(0.680 0.150 150);
+  --sig-teal:   oklch(0.700 0.120 190);
+  --sig-blue:   oklch(0.700 0.140 255);
+  --sig-violet: oklch(0.700 0.140 300);
+
+  --status-open: var(--sig-blue);
+  --status-in_progress: var(--sig-amber);
+  --status-resolved: var(--sig-green);
+  --status-not_a_bug: var(--text-tertiary);
+  --status-wont_fix: var(--text-tertiary);
+
+  --ev-click: var(--sig-blue);
+  --ev-nav: var(--sig-violet);
+  --ev-error: var(--sig-red);
+  --ev-warn: var(--sig-amber);
+  --ev-net: var(--sig-teal);
+  --ev-input: var(--sig-blue);
+  --ev-marker: var(--sig-amber);
+
+  /* JSON viewer — pulled onto the same chroma as the signal ramp so a network row and its
+     expanded body read as one surface instead of two unrelated palettes. */
+  --json-bg: var(--raised);
+  --json-key: oklch(0.780 0.130 150);
+  --json-string: oklch(0.800 0.090 230);
+  --json-number: oklch(0.830 0.120 85);
+  --json-boolean: oklch(0.720 0.140 25);
+  --json-null: oklch(0.760 0.120 300);
+  --json-punct: var(--text-tertiary);
 }
 
-/* Severity pills — deeper tints so they read as the same objects on dark surfaces. */
-/* The reference forbids shadows: depth comes from the ground→panel step and a 1px rule, not
-   from a blur. Neutralised here rather than at each call site, so light mode keeps its own
-   look and a single line reverses the decision. */
-.dark :is(.shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
-  box-shadow: none;
-}
+/* Severity pills — see the fills below; medium/low are deliberately unfilled. */
 
-.dark .pill-critical {
-  background: #4c1a26;
-  color: #fda4af;
-}
-.dark .pill-high {
-  background: #451a22;
-  color: #f9a8b4;
-}
-.dark .pill-medium {
-  background: #422d12;
-  color: #fbbf6e;
-}
-.dark .pill-low {
-  background: #2e3138;
-  color: #a2a8b3;
-}
+/* Only critical and high get a fill. Every session in the corpus is "Medium", so an amber
+   warning pill was the loudest thing in a row while carrying zero bits — the eye was dragged
+   eight times to the one column that never changed. Medium and low become quiet text with a
+   tick, so weight is spent on the values that actually discriminate. */
+.dark .pill-critical { background: oklch(0.30 0.10 25); color: oklch(0.84 0.13 25); }
+.dark .pill-high     { background: oklch(0.29 0.075 40); color: oklch(0.83 0.11 40); }
+.dark .pill-medium   { background: transparent; color: var(--text-tertiary);
+                       box-shadow: inset 2px 0 0 var(--sig-amber); }
+.dark .pill-low      { background: transparent; color: var(--text-tertiary); }
 
 @layer base {
   * {
@@ -290,14 +337,8 @@
   line-height: 1.25;
   letter-spacing: 0.005em;
 }
-.pill-critical {
-  background: #f6d0d0;
-  color: #9f1239;
-}
-.pill-high {
-  background: #fdeaee;
-  color: #b31e40;
-}
+.pill-critical { background: oklch(0.90 0.06 25); color: oklch(0.44 0.17 25); }
+.pill-high { background: oklch(0.93 0.045 35); color: oklch(0.47 0.16 35); }
 .pill-medium {
   background: #fbeedd;
   color: #b1600f;
