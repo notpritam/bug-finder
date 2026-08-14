@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyLink } from "@/components/common/CopyLink";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Bug as BugIcon, ChevronRight, Clapperboard, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Bug as BugIcon, Clapperboard, Search, Trash2 } from "lucide-react";
 import type { Bug, BugSeverity, BugStatus, Reporter } from "@/lib/types";
 import type { SidebarView } from "@/components/shell/Sidebar";
 import { cn, formatDuration, hostOf, relativeTime } from "@/lib/utils";
@@ -335,7 +335,7 @@ export function BugsPage({
           </span>
         </div>
 
-        <ul className={cn(grid ? "grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3" : "flex flex-col gap-1.5")}>
+        <ul className={cn(grid ? "grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3" : "flex flex-col gap-1")}>
           {canDelete && selected.size > 0 ? (
             <li className="mb-1 flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-[12px]">
               <span className="font-semibold">{selected.size} selected</span>
@@ -373,7 +373,8 @@ export function BugsPage({
                 key={bug.id}
                 ref={i === activeIndex ? activeRowRef : null}
                 className={cn(
-                  "card-rise group flex gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors",
+                  "group flex gap-3 rounded-lg border bg-card transition-colors",
+                  grid ? "px-3.5 py-3" : "px-3 py-2",
                   grid ? "flex-col items-stretch" : "items-center",
                   i === activeIndex
                     ? "border-primary/60 shadow-[inset_3px_0_0_0_var(--primary)] ring-1 ring-primary/30"
@@ -410,13 +411,22 @@ export function BugsPage({
                         {formatDuration(bug.durationMs)}
                       </span>
                       {errors > 0 && (
-                        <span className="inline-flex shrink-0 items-center gap-1 font-medium text-red-600">
+                        <span className="inline-flex shrink-0 items-center gap-1 font-medium text-[color:var(--ev-error)]">
                           <AlertTriangle className="size-3" />
                           {errors} {errors === 1 ? "error" : "errors"}
                         </span>
                       )}
+                      {/* Real numbers for rows filed by teammates. `bug.console` is projected out
+                          of the list response, so the error count above is always 0 for them —
+                          evidenceCounts rides on the row and is the only signal that survives. */}
+                      {!bug.console?.length && bug.evidenceCounts?.network ? (
+                        <span className="shrink-0 tabular-nums">{bug.evidenceCounts.network} req</span>
+                      ) : null}
+                      {/* Tags inline rather than on a third line — that line is what took the row
+                          from 65px to 87px, and it carried one chip most of the time. */}
+                      {!grid && bug.tags.length > 0 && <BugTagChips tags={bug.tags} className="shrink-0" />}
                     </p>
-                    {bug.tags.length > 0 && <BugTagChips tags={bug.tags} className="mt-1" />}
+                    {grid && bug.tags.length > 0 && <BugTagChips tags={bug.tags} className="mt-1" />}
                   </div>
                   <span className={cn(grid ? "mt-auto flex w-full items-center gap-2 pt-1" : "contents")}>
                     <BugSeverityPill severity={bug.severity} />
@@ -432,16 +442,23 @@ export function BugsPage({
                     >
                       {relativeTime(bug.createdAt)}
                     </span>
-                    {!grid && (
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
-                    )}
                   </span>
                 </button>
                 {/* On a card these are stretched children of a column, so each would take a full
                     row of its own. Keep them on one line there; `contents` leaves the list untouched. */}
-                <span className={cn(grid ? "flex items-center gap-2" : "contents")}>
+                <span
+                  className={cn(
+                    grid
+                      ? "flex items-center gap-2"
+                      : // Revealed on hover or keyboard focus. Sync failures stay visible always —
+                        // that one is a warning, not an action.
+                        "contents [&>*:not([data-always])]:opacity-0 group-hover:[&>*]:opacity-100 group-focus-within:[&>*]:opacity-100",
+                  )}
+                >
                   {isUnsynced(bug) && (
-                    <SyncBadge bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />
+                    <span data-always>
+                      <SyncBadge bug={bug} onRetry={onRetrySync ? () => onRetrySync(bug.id) : undefined} />
+                    </span>
                   )}
                   <InlineStatus status={bug.status} onChange={(s) => onStatusChange(bug.id, s)} />
                   <CopyLink path={`/session/${bug.humanId}`} label={bug.title} />
