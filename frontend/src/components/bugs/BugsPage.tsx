@@ -27,6 +27,17 @@ function isTypingTarget(el: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
 }
 
+/** Each view names itself. One page serves six sidebar entries, and with a single fixed heading
+ *  there was nothing on screen telling you which one you were looking at. */
+const VIEW_TITLE: Partial<Record<SidebarView, string>> = {
+  all: "All sessions",
+  open: "Open",
+  in_progress: "In progress",
+  resolved: "Resolved",
+  mine: "My sessions",
+  reported: "Reported by me",
+};
+
 export function BugsPage({
   bugs,
   me,
@@ -236,7 +247,7 @@ export function BugsPage({
       <div className="mx-auto w-full">
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <BugIcon className="size-5 text-primary" />
-          <h1 className="text-[20px] font-bold tracking-tight">Bugs</h1>
+          <h1 className="text-[20px] font-bold tracking-tight">{VIEW_TITLE[view] ?? "All sessions"}</h1>
           <div className="relative ml-auto w-full sm:w-64">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -247,8 +258,8 @@ export function BugsPage({
                 setSearch(e.target.value);
                 setActiveIndex(-1);
               }}
-              placeholder="Search bugs…"
-              aria-label="Search bugs"
+              placeholder="Search sessions…"
+              aria-label="Search sessions"
               className="h-8 w-full rounded-lg border border-border/60 bg-card pl-8 pr-8 text-[13px] outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/40"
             />
             <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border/60 bg-muted px-1 font-mono text-[10px] text-muted-foreground sm:block">
@@ -441,7 +452,7 @@ export function BugsPage({
           {visible.length === 0 &&
             (bugs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-14 text-center">
-                <p className="text-[13.5px] font-semibold text-foreground">No bugs yet</p>
+                <p className="text-[13.5px] font-semibold text-foreground">No sessions yet</p>
                 <p className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
                   Record one with the <b>Bug Finder extension</b> on any site — the capture lands in{" "}
                   <b>Drafts</b> for review before it's filed. Or try the built-in demo capture to see the
@@ -459,10 +470,10 @@ export function BugsPage({
               <div className="py-10 text-center">
                 <p className="text-[13px] text-muted-foreground">
                   {scoped.length === 0
-                    ? "No bugs in this view."
+                    ? "No sessions in this view."
                     : query
-                      ? `No bugs match "${search.trim()}"${severityFilter !== "all" ? ` with severity ${severityFilter}` : ""}.`
-                      : "No bugs match these filters."}
+                      ? `No sessions match "${search.trim()}"${severityFilter !== "all" ? ` with severity ${severityFilter}` : ""}.`
+                      : "No sessions match these filters."}
                 </p>
                 {filtersActive && (
                   <button

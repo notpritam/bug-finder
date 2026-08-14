@@ -64,7 +64,10 @@ export async function signUp(input: {
   email: string;
   password: string;
   role: Role;
-  team: string;
+  /** Optional, and no longer collected at signup. The backend still defaults it and the legacy
+   *  resolver still honours it, so an account created without one simply has no implicit team
+   *  until the person joins a real one. */
+  team?: string;
 }): Promise<AuthUser> {
   if (input.password.length < 8) throw new Error("Password needs at least 8 characters.");
   const { token, user } = await call<{ token: string; user: AuthUser }>("/api/auth/register", {
@@ -72,7 +75,7 @@ export async function signUp(input: {
     email: input.email.trim().toLowerCase(),
     password: input.password,
     role: input.role,
-    team: input.team,
+    ...(input.team ? { team: input.team } : {}),
   });
   setSession(user, token);
   return user;

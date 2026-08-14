@@ -13,7 +13,7 @@ export function isUnsynced(bug: Bug): boolean {
 function reason(bug: Bug): string {
   const why =
     bug.syncState === "local-only"
-      ? "It could not be reached (offline or no backend), so teammates and agents cannot see this bug yet."
+      ? "It could not be reached (offline or no backend), so teammates and agents cannot see this session yet."
       : `The server refused it${bug.syncError ? `: ${bug.syncError}` : "."}`;
   return `This bug exists only on this device — it never reached the server. ${why}`;
 }

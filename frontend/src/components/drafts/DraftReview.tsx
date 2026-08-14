@@ -407,7 +407,7 @@ export function DraftReview({
             type="button"
             disabled={!canSubmit || submitting}
             onClick={() => void handleSubmit()}
-            title={submitting ? "Filing…" : canSubmit ? "File this bug" : "Add a title first"}
+            title={submitting ? "Filing…" : canSubmit ? "File this session" : "Add a title first"}
             data-testid="submit-draft-btn"
             className={cn(
               "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-bold transition",
@@ -418,7 +418,7 @@ export function DraftReview({
             )}
           >
             {submitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-            {submitting ? "Filing…" : user ? "Submit bug" : "Submit as Anonymous"}
+            {submitting ? "Filing…" : user ? "Submit session" : "Submit as Anonymous"}
           </button>
           {submitError && (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-red-600">
@@ -664,7 +664,7 @@ function ReportForm({
                 });
               }}
               className="mt-1.5 h-8 w-full rounded-lg border border-border/60 bg-card px-2 text-[12.5px] outline-none focus:border-primary/50"
-              aria-label="Choose the initiative this bug was found in"
+              aria-label="Choose the initiative this session was found in"
               data-testid="draft-initiative-select"
             >
               <option value="">Choose an initiative…</option>

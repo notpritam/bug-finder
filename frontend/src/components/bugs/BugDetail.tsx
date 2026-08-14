@@ -443,7 +443,7 @@ export function BugDetail({
 
           <div className="flex flex-col gap-4">
           {relatedBugs.length > 0 && (
-            <Card title="Related bugs">
+            <Card title="Related sessions">
               <ul className="flex flex-col gap-1.5">
                 {relatedBugs.map((rb) => (
                   <li key={rb.id}>

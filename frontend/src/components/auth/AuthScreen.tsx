@@ -3,10 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { Bug as BugIcon, Loader2 } from "lucide-react";
 import { signIn, signUp, type AuthUser } from "@/lib/auth";
-import { addTeam, listTeams, ROLES, type Role } from "@/lib/meta";
+import { ROLES, type Role } from "@/lib/meta";
 import { cn } from "@/lib/utils";
 
-const NEW_TEAM = "__new__";
 
 export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) => void; onSkip?: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signup");
@@ -14,8 +13,6 @@ export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) =>
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("QA Engineer");
-  const [team, setTeam] = useState(listTeams()[0]);
-  const [newTeam, setNewTeam] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,10 +25,11 @@ export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) =>
       if (mode === "signin") {
         onAuthed(await signIn(email, password));
       } else {
-        const chosenTeam = team === NEW_TEAM ? newTeam.trim() : team;
-        if (!chosenTeam) throw new Error("Pick or create a team.");
-        if (team === NEW_TEAM) addTeam(chosenTeam);
-        onAuthed(await signUp({ name, email, password, role, team: chosenTeam }));
+        // No team here on purpose. This field used to write a free-text string from a hardcoded
+        // local list that had nothing to do with the real Teams feature — so a new person picked
+        // "Platform", was in no team, and then /teams told them "No teams yet". Teams are joined
+        // after signing in, where joining actually does something.
+        onAuthed(await signUp({ name, email, password, role }));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -124,28 +122,6 @@ export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) =>
                       </button>
                     ))}
                   </div>
-                </div>
-                <div>
-                  <label htmlFor="auth-team" className={label}>
-                    Team
-                  </label>
-                  <select id="auth-team" value={team} onChange={(e) => setTeam(e.target.value)} className={field}>
-                    {listTeams().map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                    <option value={NEW_TEAM}>+ New team…</option>
-                  </select>
-                  {team === NEW_TEAM && (
-                    <input
-                      type="text"
-                      value={newTeam}
-                      onChange={(e) => setNewTeam(e.target.value)}
-                      placeholder="Team name"
-                      className={cn(field, "mt-2")}
-                    />
-                  )}
                 </div>
               </>
             )}
