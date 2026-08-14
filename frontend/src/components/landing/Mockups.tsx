@@ -127,7 +127,14 @@ export function AgentMockup() {
   );
 }
 
-/** What the reporter does — one pill, four controls, no form to fill in. */
+/** What the reporter does — one pill, no form to fill in.
+ *
+ *  Drawn rather than captured: the pill is injected by the extension into a CLOSED shadow root, so
+ *  nothing outside it can read the markup, and it does not exist anywhere in this app. The controls
+ *  below are transcribed from extension/src/content/widget.ts and checked against a real recording
+ *  session (Playwright, extension loaded, `bf:start` sent). Two things that check corrected: the
+ *  stop button reads "Stop & review", not "Stop", and the earlier drawing was missing Shot and
+ *  Note. At rest the middle group is folded away and only the dot, the clock and stop show. */
 export function RecorderMockup() {
   return (
     <AppWindow title="shop.example.com">
@@ -159,7 +166,9 @@ export function RecorderMockup() {
           <span>⚑ Flag</span>
           <span>⌖ Pick</span>
           <span>✎ Draw</span>
-          <span className="lp-rec-stop">■ Stop</span>
+          <span>⧉ Shot</span>
+          <span>✎ Note</span>
+          <span className="lp-rec-stop">■ Stop &amp; review</span>
         </div>
       </div>
     </AppWindow>
