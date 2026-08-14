@@ -88,6 +88,7 @@ async def post_agent_comment(
 
 @router.get("/api/bugs/{human_id}/comments", response_model=list[CommentOut])
 async def list_comments(
-    human_id: str, since: int = Query(0, description="Only return comments with at > since (epoch ms)")
+    human_id: str, since: int = Query(0, description="Only return comments with at > since (epoch ms)"),
+    user: dict[str, Any] = Depends(require_user),
 ) -> list[CommentOut]:
     return await list_comments_for(human_id, since_ms=since)

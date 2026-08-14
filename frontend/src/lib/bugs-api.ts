@@ -5,10 +5,18 @@ import { authToken } from "./auth";
 
 const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
 
-/** Bearer token for WRITE endpoints (PUT/POST/DELETE). Reads stay open by design — agents
- *  consume them without accounts. Sent even before the backend enforces it (harmless), and
- *  when no one is signed in the request still goes out so the server's 401 surfaces as a
- *  visible publish failure rather than a silent local decision. */
+/**
+ * Bearer token for every call, reads included.
+ *
+ * Reads used to go out bare, on the reasoning that agents consume them without accounts. But a
+ * session carries real httpOnly cookies and full response bodies for the app under test, so a read
+ * here is not the lesser operation — it is the one worth protecting. Agents authenticate through
+ * the MCP server's own OAuth flow, which was built after that comment was written, so nothing
+ * depends on open reads any more.
+ *
+ * Sent even where the server does not yet demand it: harmless, and it means the client is ready
+ * before the route is locked rather than breaking at the moment it is.
+ */
 function authHeaders(): Record<string, string> {
   const token = authToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -142,7 +150,7 @@ export async function fetchAgentComments(humanId: string, sinceMs = 0): Promise<
   if (!BASE) return [];
   const res = await fetch(
     `${BASE}/api/bugs/${humanId}/comments?since=${sinceMs}`,
-    { headers: { Accept: "application/json" } },
+    { headers: { Accept: "application/json", ...authHeaders() } },
   );
   if (!res.ok) return [];
   return (await res.json()) as AgentComment[];
@@ -158,7 +166,7 @@ export async function fetchAgentComments(humanId: string, sinceMs = 0): Promise<
 export async function listBugs(): Promise<Bug[]> {
   if (!BASE) return [];
   try {
-    const res = await fetch(`${BASE}/api/bugs`, { headers: { Accept: "application/json" } });
+    const res = await fetch(`${BASE}/api/bugs`, { headers: { Accept: "application/json", ...authHeaders() } });
     return res.ok ? ((await res.json()) as Bug[]) : [];
   } catch {
     return []; // offline: the local rows are still there, so show those rather than nothing
@@ -170,7 +178,7 @@ export async function listBugs(): Promise<Bug[]> {
 export async function fetchBug(humanId: string): Promise<Bug | null> {
   if (!BASE) return null;
   try {
-    const res = await fetch(`${BASE}/api/bugs/${humanId}`, { headers: { Accept: "application/json" } });
+    const res = await fetch(`${BASE}/api/bugs/${humanId}`, { headers: { Accept: "application/json", ...authHeaders() } });
     return res.ok ? ((await res.json()) as Bug) : null;
   } catch {
     return null;

@@ -14,8 +14,9 @@ import urllib.request
 from html import escape
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import Depends, APIRouter, HTTPException, Query
 
+from .auth import require_user
 from .bugs import load_bug
 from .evidence_store import guard_offloaded
 
@@ -354,6 +355,7 @@ async def bug_dom_at(
     q: str = Query("", description="Case-insensitive text-contains filter on the element's text"),
     limit: int = Query(10, ge=1, le=50),
     full: bool = Query(False, description="Include the serialized page HTML (capped) when no selector is given"),
+    user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
     """The DOM as it stood at `t`. With `selector`/`q`: the matching elements (outerHTML, text,
     path) — ask at two timestamps and diff to see how state moved. Without: tree stats, plus the
@@ -403,7 +405,10 @@ async def bug_dom_at(
 
 
 @router.get("/api/bugs/{human_id}/state")
-async def bug_debug_state(human_id: str) -> dict[str, Any]:
+async def bug_debug_state(
+    human_id: str,
+    user: dict[str, Any] = Depends(require_user),
+) -> dict[str, Any]:
     """The app's opt-in `window.__DEBUG_STATE__` snapshot from capture stop, parsed when it is
     valid JSON. 404 when the app under test exposed nothing."""
     doc = await load_bug(human_id)

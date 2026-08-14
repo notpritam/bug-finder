@@ -2,8 +2,9 @@
 # ABOUTME: drill endpoints, instead of a bare list of links that costs another round-trip each.
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import Depends, APIRouter
 
+from .auth import require_user
 from .bugs import load_bug
 from .capture_health import capture_health
 from .comments import list_comments_for
@@ -14,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/api/mcp/bugs/{human_id}")
-async def mcp_bug(human_id: str) -> dict[str, Any]:
+async def mcp_bug(human_id: str, user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
     """Self-describing agent entry point. The summary rides inline — an agent that fetches this
     URL is trying to debug NOW, so make the first fetch the informative one."""
     doc = await load_bug(human_id)

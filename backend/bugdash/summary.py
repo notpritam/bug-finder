@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import APIRouter
+from fastapi import Depends, APIRouter
 
+from .auth import require_user
 from .bugs import load_bug
 from .capture_health import capture_health_lines
 from .blocks import blocks_to_markdown
@@ -300,7 +301,7 @@ def build_summary_markdown(doc: dict[str, Any], comments: list[CommentOut]) -> s
 
 
 @router.get("/api/bugs/{human_id}/summary.md")
-async def bug_summary_md(human_id: str) -> dict[str, str]:
+async def bug_summary_md(human_id: str, user: dict[str, Any] = Depends(require_user)) -> dict[str, str]:
     """A dense markdown briefing an agent can consume as one shot. This is the
     "MCP-friendly" view — everything needed to reason about the bug in one blob."""
     doc = await load_bug(human_id)

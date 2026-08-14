@@ -35,7 +35,8 @@ def _clean_initiative(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/api/initiatives")
-async def list_initiatives() -> list[dict[str, Any]]:
+async def list_initiatives(    user: dict[str, Any] = Depends(require_user),
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     async for doc in initiatives_col.find().sort("createdAt", -1).limit(200):
         out.append(_clean_initiative(doc))

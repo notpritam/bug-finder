@@ -181,7 +181,8 @@ async def publish_bug(
 
 
 @router.get("/api/bugs/{human_id}")
-async def get_bug(human_id: str) -> dict[str, Any]:
+async def get_bug(human_id: str,
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Full JSON of a bug — replay events, console, network, elements, comments.
     Used by the dashboard AND by agents that want the raw evidence."""
     doc = await load_bug(human_id)
@@ -207,7 +208,8 @@ async def delete_bug(
 
 
 @router.get("/api/bugs/{human_id}/network")
-async def bug_network_index(human_id: str) -> dict[str, Any]:
+async def bug_network_index(human_id: str,
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Index of captured API calls (fetch/XHR) plus anything that failed, keyed by `i` for the
     per-entry drill. Resource-timing noise stays out unless it errored."""
     doc = await load_bug(human_id)
@@ -224,7 +226,8 @@ async def bug_network_index(human_id: str) -> dict[str, Any]:
 
 
 @router.get("/api/bugs/{human_id}/network/{index}")
-async def bug_network_entry(human_id: str, index: int) -> dict[str, Any]:
+async def bug_network_entry(human_id: str, index: int,
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """One stored network entry, verbatim — headers and request/response bodies included."""
     doc = await load_bug(human_id)
     net = doc.get("network") or []
@@ -242,6 +245,7 @@ async def bug_console(
     q: str = Query("", description="Case-insensitive substring filter on the text"),
     dedupe: bool = Query(True, description="Group identical lines with counts (stacks kept)"),
     limit: int = Query(80, ge=1, le=500),
+    user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
     """Console log with stacks — deduped by default so 108 copies of one React warning read as
     one group with a count instead of eating the whole budget."""
@@ -261,7 +265,8 @@ async def bug_console(
 
 
 @router.get("/api/bugs/{human_id}/layout")
-async def bug_layout(human_id: str) -> dict[str, Any]:
+async def bug_layout(human_id: str,
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Layout-debugger evidence (slot table, overlap verdicts, measurement ledger tail) when the
     page under test exposed window.__layoutDebug at capture time."""
     doc = await load_bug(human_id)
@@ -285,6 +290,7 @@ async def bug_app_state(
     human_id: str,
     at: int | None = Query(None, description="ms offset; returns only changes at or before it"),
     source: str | None = Query(None, description="limit to one stateSources[].id"),
+    user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
     """Store baselines plus the ordered change log. `at` is the useful parameter: replaying the
     patches up to a moment reconstructs exactly what the app held when the bug happened, which is
@@ -311,7 +317,8 @@ async def bug_app_state(
 
 
 @router.get("/api/bugs/{human_id}/cookies")
-async def bug_cookies(human_id: str, http_only: bool = Query(False)) -> dict[str, Any]:
+async def bug_cookies(human_id: str, http_only: bool = Query(False),
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Cookies at start and stop plus every change between. httpOnly ones are included and are
     usually the interesting ones — the page itself could never read them."""
     doc = await load_bug(human_id)
@@ -334,7 +341,8 @@ async def bug_cookies(human_id: str, http_only: bool = Query(False)) -> dict[str
 
 
 @router.get("/api/bugs/{human_id}/browserlog")
-async def bug_browser_log(human_id: str, level: str | None = Query(None)) -> dict[str, Any]:
+async def bug_browser_log(human_id: str, level: str | None = Query(None),
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """CORS blocks, CSP violations, mixed content and deprecations. None of these reach console.*,
     so an agent reading only the console log will never see them — and they are frequently the
     whole explanation for a request that 'just failed'."""
@@ -349,7 +357,8 @@ async def bug_browser_log(human_id: str, level: str | None = Query(None)) -> dic
 
 
 @router.get("/api/bugs/{human_id}/storage")
-async def bug_storage(human_id: str) -> dict[str, Any]:
+async def bug_storage(human_id: str,
+    user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """localStorage/sessionStorage at start and stop, the write log between them, and the
     IndexedDB / Cache Storage contents read at stop."""
     doc = await load_bug(human_id)
@@ -427,6 +436,7 @@ async def list_bugs(
     status: str | None = Query(None),
     initiativeId: str | None = Query(None),
     teamId: str | None = Query(None, description="Only sessions belonging to this team"),
+    user: dict[str, Any] = Depends(require_user),
 ) -> list[dict[str, Any]]:
     """Every filed session, newest first, without the heavy evidence.
 

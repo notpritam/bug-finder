@@ -144,7 +144,10 @@ async def _join(user_id: str, team_id: str) -> None:
 
 
 @router.get("/api/teams/{team_id}")
-async def get_team(team_id: str, user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
+async def get_team(team_id: str, user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    """Requires a user: this returns every member's email address, which auth.py already gates
+    elsewhere as "a staff directory, however small". The team LIST stays open — names of teams are
+    not a roster — but the roster itself is not public."""
     doc = await teams_col.find_one({"id": team_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, f"team {team_id} not found")
@@ -246,6 +249,7 @@ async def delete_team(team_id: str, user: dict[str, Any] = Depends(require_user)
 async def team_sessions(
     team_id: str,
     limit: int = Query(500, ge=1, le=2000),
+    user: dict[str, Any] = Depends(require_user),
 ) -> list[dict[str, Any]]:
     """This team's filed sessions, newest first.
 
