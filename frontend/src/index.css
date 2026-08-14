@@ -674,6 +674,9 @@ mark.mark-active {
 .lp-card-title {
   margin-top: 1.5rem; font-size: 1.375rem; font-weight: 500;
   letter-spacing: -0.04em; line-height: 1.24; color: var(--foreground); text-wrap: balance;
+  /* Two lines' worth, always. Titles here run to one or two lines, and without a floor the
+     figures below start at different heights and the row of cards reads as misaligned. */
+  min-height: calc(2 * 1.24em);
 }
 .lp-card-figure { flex: 1 1 auto; min-height: 0; margin: 1.5rem 0; display: flex; align-items: center; }
 .lp-card-body { font-size: 0.8125rem; line-height: 1.6; color: var(--muted-foreground); text-wrap: pretty; }
