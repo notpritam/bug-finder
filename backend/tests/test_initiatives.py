@@ -125,7 +125,7 @@ def test_owner_cannot_be_forged(owner, other_user, created_ids):
 
 def test_list_initiatives(owner, created_ids):
     _create(owner, created_ids)
-    r = requests.get(API, timeout=TIMEOUT)  # reads stay open
+    r = owner.get(API, timeout=TIMEOUT)  # reads need a token now — the corpus is not public
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)

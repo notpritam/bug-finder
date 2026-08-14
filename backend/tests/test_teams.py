@@ -190,13 +190,13 @@ def test_a_filed_session_is_stamped_with_the_reporters_teams(alice, made):
     assert requests.put(f"{BUGS}/{human_id}", json=body, timeout=TIMEOUT).status_code == 200
 
     try:
-        stored = requests.get(f"{BUGS}/{human_id}", timeout=TIMEOUT).json()
+        stored = alice.get(f"{BUGS}/{human_id}", timeout=TIMEOUT).json()
         assert team["id"] in (stored.get("teamIds") or []), "the session was not stamped with its team"
 
-        scoped = requests.get(f"{API}/{team['id']}/sessions", timeout=TIMEOUT).json()
+        scoped = alice.get(f"{API}/{team['id']}/sessions", timeout=TIMEOUT).json()
         assert human_id in [b["humanId"] for b in scoped], "the team's own session list omits it"
 
-        filtered = requests.get(BUGS, params={"teamId": team["id"]}, timeout=TIMEOUT).json()
+        filtered = alice.get(BUGS, params={"teamId": team["id"]}, timeout=TIMEOUT).json()
         assert human_id in [b["humanId"] for b in filtered], "?teamId= did not find it"
     finally:
         alice.delete(f"{BUGS}/{human_id}", timeout=TIMEOUT)
@@ -205,7 +205,7 @@ def test_a_filed_session_is_stamped_with_the_reporters_teams(alice, made):
 def test_a_team_with_no_sessions_returns_an_empty_list_not_everything(alice, made):
     """A filter that silently matches nothing must not fall back to the whole corpus."""
     team = _new_team(alice, made)
-    assert requests.get(f"{API}/{team['id']}/sessions", timeout=TIMEOUT).json() == []
+    assert alice.get(f"{API}/{team['id']}/sessions", timeout=TIMEOUT).json() == []
 
 
 def test_the_legacy_free_text_team_still_finds_its_team(made):

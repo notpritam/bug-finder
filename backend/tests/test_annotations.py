@@ -90,12 +90,14 @@ def session_id(author, stranger):
     author.delete(f"{API}/{human_id}", timeout=TIMEOUT)
     for s in (author, stranger):
         s.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
-    gone = requests.get(f"{API}/{human_id}", timeout=TIMEOUT)
+    gone = author.get(f"{API}/{human_id}", timeout=TIMEOUT)
     assert gone.status_code == 404, f"test session {human_id} was left behind"
 
 
-def _annotations(human_id):
-    res = requests.get(f"{API}/{human_id}", timeout=TIMEOUT)
+def _annotations(human_id, session):
+    # Reads require a token now — a session carries real cookies and response bodies, so reading
+    # one is the operation worth protecting, not the lesser one.
+    res = session.get(f"{API}/{human_id}", timeout=TIMEOUT)
     assert res.status_code == 200, res.text
     return res.json().get("annotations") or []
 
@@ -118,7 +120,7 @@ def test_add_pins_a_moment_with_its_author(author, session_id):
     assert made["at"] > 0
     assert made["id"].startswith("an-")
 
-    stored = _annotations(session_id)
+    stored = _annotations(session_id, author)
     assert [a["id"] for a in stored] == [made["id"]]
 
 
@@ -145,7 +147,7 @@ def test_author_can_reword_their_own(author, session_id):
     assert res.json()["label"] == "typo here"
     assert res.json()["editedAt"] > 0, "an edited annotation says it was edited"
 
-    stored = {a["id"]: a for a in _annotations(session_id)}
+    stored = {a["id"]: a for a in _annotations(session_id, author)}
     assert stored[made["id"]]["label"] == "typo here"
 
 
@@ -162,7 +164,7 @@ def test_a_stranger_cannot_rewrite_or_delete_your_annotation(author, stranger, s
     removed = stranger.delete(f"{API}/{session_id}/annotations/{made['id']}", timeout=TIMEOUT)
     assert removed.status_code == 403, removed.text
 
-    stored = {a["id"]: a for a in _annotations(session_id)}
+    stored = {a["id"]: a for a in _annotations(session_id, author)}
     assert stored[made["id"]]["label"] == "mine", "the original survived both attempts"
 
 
@@ -175,7 +177,7 @@ def test_delete_removes_only_that_one(author, session_id):
     res = author.delete(f"{API}/{session_id}/annotations/{drop['id']}", timeout=TIMEOUT)
     assert res.status_code == 200, res.text
 
-    ids = [a["id"] for a in _annotations(session_id)]
+    ids = [a["id"] for a in _annotations(session_id, author)]
     assert drop["id"] not in ids
     assert keep["id"] in ids
 
@@ -189,14 +191,14 @@ def test_a_missing_annotation_is_404_not_500(author, session_id):
 def test_annotating_never_touches_the_recorded_markers(author, session_id):
     """The whole reason annotations are a separate field. If this ever fails, the UI has been given
     a way to rewrite capture, which is the rule EDITABLE_FIELDS exists to enforce."""
-    before = requests.get(f"{API}/{session_id}", timeout=TIMEOUT).json()["markers"]
+    before = author.get(f"{API}/{session_id}", timeout=TIMEOUT).json()["markers"]
 
     made = author.post(f"{API}/{session_id}/annotations", json={"t": 4_000, "label": "same t as a real marker"},
                        timeout=TIMEOUT).json()
     author.patch(f"{API}/{session_id}/annotations/{made['id']}", json={"label": "reworded"}, timeout=TIMEOUT)
     author.delete(f"{API}/{session_id}/annotations/{made['id']}", timeout=TIMEOUT)
 
-    after = requests.get(f"{API}/{session_id}", timeout=TIMEOUT).json()["markers"]
+    after = author.get(f"{API}/{session_id}", timeout=TIMEOUT).json()["markers"]
     assert after == before, "capture markers must be byte-identical after any annotation traffic"
 
 
@@ -209,7 +211,7 @@ def test_markers_are_still_rejected_as_a_patch_field(author, session_id):
 
 def test_the_history_trail_records_who_pinned_what(author, session_id):
     author.post(f"{API}/{session_id}/annotations", json={"t": 11_000, "label": "audit trail check"}, timeout=TIMEOUT)
-    doc = requests.get(f"{API}/{session_id}", timeout=TIMEOUT).json()
+    doc = author.get(f"{API}/{session_id}", timeout=TIMEOUT).json()
     annotated = [e for e in doc.get("events", []) if e.get("kind") == "annotated"]
     assert annotated, "an annotation is a change to the session and belongs in its history"
     assert any("audit trail check" in e.get("detail", "") for e in annotated)
