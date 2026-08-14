@@ -81,8 +81,10 @@ export function LandingPage() {
             </button>
           </div>
 
-          <p className="lp-meta mt-5 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Clock className="size-3" />
+          {/* Not a flex row: the text is one node, so on a narrow screen it wrapped as a block and
+              left the icon stranded on a line of its own. Inline keeps them together. */}
+          <p className="lp-meta mt-5">
+            <Clock className="mr-1.5 inline-block size-3 -translate-y-px align-middle" />
             Chrome extension · records locally · nothing leaves the browser until you file it
           </p>
         </div>
