@@ -48,7 +48,13 @@ class Credentials(BaseModel):
 class RegisterInput(Credentials):
     name: str = Field(min_length=1, max_length=80)
     role: str = "Frontend Developer"
-    team: str = "Platform"
+    #: Empty by default, and no longer collected at signup.
+    #:
+    #: It used to default to "Platform", which meant a brand-new account was implicitly a member of
+    #: a team called Platform the moment one existed — via the legacy resolver — without anybody
+    #: choosing that. Existing accounts keep whatever string they already carry, so the migration
+    #: path is unaffected; only new ones stop being guessed at.
+    team: str = ""
 
 
 class PublicUser(BaseModel):
