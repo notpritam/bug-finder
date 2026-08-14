@@ -1,5 +1,6 @@
 # ABOUTME: Agent ↔ dashboard comment thread on a bug — agents POST, the dashboard polls GET.
 # ABOUTME: list_comments_for is shared with the bug fetch + summary so every surface shows the same thread.
+from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
