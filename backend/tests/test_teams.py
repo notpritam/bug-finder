@@ -225,6 +225,8 @@ def test_the_legacy_free_text_team_still_finds_its_team(made):
         finally:
             dave.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
     finally:
+        # Same ordering rule — carol is the only member of the team she created.
+        carol.delete(f"{API}/{team['id']}", timeout=TIMEOUT)
         carol.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
 
 
@@ -260,6 +262,10 @@ def test_joining_a_team_does_not_silently_drop_your_legacy_one(made):
             "legacy membership was honoured but never made real, so the roster still omits them"
         )
     finally:
+        # Order matters: deleting a team needs a member, and closing these accounts destroys the
+        # only tokens that qualify. The module fixture's later attempt would 403 and leak.
+        founder.delete(f"{API}/{legacy_team['id']}", timeout=TIMEOUT)
+        founder.delete(f"{API}/{other_team['id']}", timeout=TIMEOUT)
         eve.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
         founder.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
 
