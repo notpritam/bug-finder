@@ -43,6 +43,7 @@ import { InitiativeDetail } from "@/components/initiatives/InitiativeDetail";
 import { InsightsPage } from "@/components/insights/InsightsPage";
 import { AdminPage } from "@/components/admin/AdminPage";
 import { ConnectPage } from "@/components/connect/ConnectPage";
+import { LandingPage } from "@/components/landing/LandingPage";
 import { TeamsPage } from "@/components/teams/TeamsPage";
 import { ProfilePage } from "@/components/profile/ProfilePage";
 import { listInitiatives, type Initiative } from "@/lib/initiatives";
@@ -406,6 +407,8 @@ function Shell({
     [drafts, user?.id],
   );
 
+  /** Signed-out root: the pitch, with no app chrome around it. */
+  const showLanding = !user && location.pathname === "/";
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
     // "sessions", not "bugs". The routes were renamed and this check was not, so every one of the
@@ -649,6 +652,9 @@ function Shell({
           </div>
         </div>
       )}
+      {/* The landing page is the one route with no app chrome. A dashboard rail beside a pitch
+          frames it as a logged-out app screen — which is the impression it exists to replace. */}
+      {!showLanding && (
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((c) => !c)}
@@ -661,9 +667,12 @@ function Shell({
         onSignIn={() => navigate("/auth")}
         onSignOut={onSignOut}
       />
+      )}
       <main className="flex min-w-0 flex-1 flex-col">
         <Routes>
-          <Route path="/" element={<Navigate to={user ? "/sessions" : "/drafts"} replace />} />
+          {/* Signed out, "/" is the landing page — it has to say what this is before it asks for an
+              account. Signed in, it is the session list, because by then the pitch is over. */}
+          <Route path="/" element={user ? <Navigate to="/sessions" replace /> : <LandingPage />} />
           {/* The paths used to be /bugs and /bug/:id. Links have already been shared, and a
               shared link that 404s is worse than a redirect that lives forever. */}
           <Route path="/bugs/:view?" element={<LegacyRedirect to="/sessions" />} />
