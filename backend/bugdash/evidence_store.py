@@ -65,13 +65,36 @@ def _fetch_json(url: str) -> Any:
         return json.loads(data)
 
 
-async def resolve_evidence(doc: dict[str, Any]) -> dict[str, Any]:
+async def resolve_evidence(doc: dict[str, Any], fields: list[str] | None = None) -> dict[str, Any]:
     """Merge a doc's offloaded heavy fields back in from storage.
 
     Best-effort and NON-fatal: on a fetch failure the light doc is returned unchanged with
     `_evidenceUnavailable` set, so metadata (title/status) still reads and a drill can report the
     fetch failure honestly instead of looking like an empty capture. Mutates and returns `doc`.
     """
+    # PER-FIELD FIRST. A capture published since the split carries one storage file per heavy
+    # field, so a caller asking for the console fetches the console — a few KB — instead of the
+    # whole 62MB capture. That is the difference between the agent endpoints working and returning
+    # 413 on exactly the sessions with the most evidence, which is what they used to do.
+    per_field = doc.get("evidenceFiles")
+    if isinstance(per_field, dict) and per_field:
+        wanted = [f for f in (fields or list(per_field)) if f in per_field and doc.get(f) is None]
+        missing: list[str] = []
+        for field in wanted:
+            try:
+                doc[field] = await asyncio.to_thread(_fetch_json, download_url(str(per_field[field])))
+            except Exception:  # noqa: BLE001 — one unreadable field must not sink the others
+                missing.append(field)
+        if missing:
+            doc["_evidenceUnavailable"] = {
+                "fileId": ", ".join(str(per_field[f]) for f in missing),
+                "error": f"could not fetch: {', '.join(missing)}",
+                "downloadUrl": download_url(str(per_field[missing[0]])),
+            }
+        else:
+            doc["_evidenceResolved"] = True
+        return doc
+
     file_id = doc.get("evidenceFileId")
     if not file_id or doc.get("_evidenceResolved"):
         return doc

@@ -122,6 +122,25 @@ async function shrinkForServer(bug: Bug): Promise<Bug> {
     rrwebEvents: len(bug.rrweb),
   };
   if (Object.keys(heavy).length) {
+    // ONE FILE PER FIELD, not one file for everything.
+    //
+    // A single blob meant the server had to parse the whole capture to answer any question about
+    // it — and it cannot: the API runs in 512Mi and JSON parsing costs 4-8x the wire bytes, so
+    // there is an 8MB inline cap. A real capture is 62MB, so every agent-facing route (the
+    // markdown briefing, the console drill, the network drill, the MCP endpoint) returned 413 on
+    // exactly the sessions carrying the most evidence. The agent got nothing at all.
+    //
+    // Split by field, an agent asking for the console fetches the console — a few KB — and the
+    // 40MB of response bodies it did not ask for never leave storage. The dashboard gets the same
+    // benefit: it can fetch the tab you are looking at instead of the entire capture.
+    const entries = await Promise.all(
+      Object.entries(heavy).map(async ([key, value]) => [
+        key,
+        await uploadJson(`${bug.humanId}-${key}.json`, value),
+      ] as const),
+    );
+    slim.evidenceFiles = Object.fromEntries(entries);
+    // Kept for readers that predate the split — they still find one file with everything in it.
     slim.evidenceFileId = await uploadJson(`${bug.humanId}-evidence.json`, heavy);
   }
   return slim as unknown as Bug;

@@ -27,7 +27,7 @@ from .models import BugPayload
 router = APIRouter()
 
 
-async def load_bug(human_id: str, with_evidence: bool = True) -> dict[str, Any]:
+async def load_bug(human_id: str, with_evidence: bool = True, fields: list[str] | None = None) -> dict[str, Any]:
     doc = await bugs_col.find_one({"humanId": human_id})
     if not doc:
         raise HTTPException(404, f"bug {human_id} not found")
@@ -35,7 +35,9 @@ async def load_bug(human_id: str, with_evidence: bool = True) -> dict[str, Any]:
     # Heavy capture fields are offloaded to a single storage file to keep the Mongo doc small; merge
     # them back so every reader (agents included) sees a complete bug. No-op for a fully inline bug.
     if with_evidence:
-        await resolve_evidence(doc)
+        # `fields` narrows the fetch to what this caller actually reads. Without it a console drill
+        # pulled every response body in the capture and then failed the memory cap for its trouble.
+        await resolve_evidence(doc, fields)
     return doc
 
 
@@ -212,7 +214,7 @@ async def bug_network_index(human_id: str,
     user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Index of captured API calls (fetch/XHR) plus anything that failed, keyed by `i` for the
     per-entry drill. Resource-timing noise stays out unless it errored."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["network"])
     net = doc.get("network") or []
     if not net:
         guard_offloaded(doc)
@@ -229,7 +231,7 @@ async def bug_network_index(human_id: str,
 async def bug_network_entry(human_id: str, index: int,
     user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """One stored network entry, verbatim — headers and request/response bodies included."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["network"])
     net = doc.get("network") or []
     if not net:
         guard_offloaded(doc)
@@ -249,7 +251,7 @@ async def bug_console(
 ) -> dict[str, Any]:
     """Console log with stacks — deduped by default so 108 copies of one React warning read as
     one group with a count instead of eating the whole budget."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["console"])
     entries = doc.get("console") or []
     if not entries:
         guard_offloaded(doc)
@@ -269,7 +271,7 @@ async def bug_layout(human_id: str,
     user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Layout-debugger evidence (slot table, overlap verdicts, measurement ledger tail) when the
     page under test exposed window.__layoutDebug at capture time."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["layoutDebug"])
     layout = doc.get("layoutDebug")
     if not layout:
         # layoutDebug is offloaded too, so "absent" may mean "in a file we couldn't reach".
@@ -295,7 +297,7 @@ async def bug_app_state(
     """Store baselines plus the ordered change log. `at` is the useful parameter: replaying the
     patches up to a moment reconstructs exactly what the app held when the bug happened, which is
     the question an agent actually has."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["stateSources", "stateChanges"])
     sources = doc.get("stateSources") or []
     changes = doc.get("stateChanges") or []
     if not sources:
@@ -321,7 +323,7 @@ async def bug_cookies(human_id: str, http_only: bool = Query(False),
     user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """Cookies at start and stop plus every change between. httpOnly ones are included and are
     usually the interesting ones — the page itself could never read them."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["cookiesAtStart", "cookiesAtStop", "cookieChanges"])
     at_stop = doc.get("cookiesAtStop") or doc.get("cookiesAtStart") or []
     if not at_stop:
         guard_offloaded(doc)
@@ -346,7 +348,7 @@ async def bug_browser_log(human_id: str, level: str | None = Query(None),
     """CORS blocks, CSP violations, mixed content and deprecations. None of these reach console.*,
     so an agent reading only the console log will never see them — and they are frequently the
     whole explanation for a request that 'just failed'."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["browserLog"])
     entries = doc.get("browserLog") or []
     if not entries:
         guard_offloaded(doc)
@@ -361,7 +363,7 @@ async def bug_storage(human_id: str,
     user: dict[str, Any] = Depends(require_user),) -> dict[str, Any]:
     """localStorage/sessionStorage at start and stop, the write log between them, and the
     IndexedDB / Cache Storage contents read at stop."""
-    doc = await load_bug(human_id)
+    doc = await load_bug(human_id, fields=["storageAtStart", "storageAtStop", "storageChanges", "indexedDb", "cacheStorage"])
     payload = {
         "humanId": human_id,
         "storageAtStart": doc.get("storageAtStart"),

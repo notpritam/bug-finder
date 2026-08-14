@@ -8,7 +8,7 @@ from .auth import require_user
 from .bugs import load_bug
 from .capture_health import capture_health
 from .comments import list_comments_for
-from .evidence_store import guard_offloaded
+from .evidence_store import evidence_unavailable
 from .summary import build_summary_markdown
 
 router = APIRouter()
@@ -19,13 +19,30 @@ async def mcp_bug(human_id: str, user: dict[str, Any] = Depends(require_user)) -
     """Self-describing agent entry point. The summary rides inline — an agent that fetches this
     URL is trying to debug NOW, so make the first fetch the informative one."""
     doc = await load_bug(human_id)
-    # Every hasX flag and deepCapture count below reads an offloaded key. Unreachable evidence
-    # would render them all zero/false, telling the agent this capture holds nothing — the exact
-    # claim that stops it drilling any further.
-    guard_offloaded(doc)
+    # Every hasX flag and deepCapture count below reads an offloaded key, so unreachable evidence
+    # would render them all zero/false — telling the agent this capture holds nothing, which is the
+    # exact claim that stops it drilling any further.
+    #
+    # But refusing outright is worse. This used to call guard_offloaded and 413 the whole response
+    # when the evidence was merely too large to inline, so an agent handed the richest capture in
+    # the corpus got NOTHING — not the title, not the counts, not the drill map, not even the
+    # download URL in a form it could act on. Degrade instead: serve everything that is inline,
+    # say plainly which numbers are therefore unknown, and hand over the address of the rest.
+    unavailable = evidence_unavailable(doc)
     comments = await list_comments_for(human_id)
     return {
         "humanId": human_id,
+        # Present ONLY when some evidence could not be read. Its presence is the agent's signal
+        # that the zeroes below are "not known" rather than "not there" — the distinction that
+        # decides whether it keeps looking.
+        **({"evidenceIncomplete": {
+            **unavailable,
+            "note": (
+                "Counts and hasX flags below cover only the evidence served inline. "
+                "Fetch the file at downloadUrl for the rest, or use the per-field drill endpoints "
+                "on captures published since evidence was split by field."
+            ),
+        }} if unavailable else {}),
         "title": doc.get("title"),
         "status": doc.get("status"),
         "jobId": doc.get("jobId"),

@@ -342,6 +342,9 @@ export interface DeepCapture {
    *  removed, so the Mongo document stays light regardless of capture size; this is that file's
    *  id. The row in this browser's IndexedDB always keeps everything inline. */
   evidenceFileId?: string;
+  /** One storage file per heavy field, so a reader fetches only what it asks for. The single
+   *  `evidenceFileId` above is still written for readers that predate this. */
+  evidenceFiles?: Record<string, string>;
   /** Counts kept inline when the evidence was offloaded, so a summary stays truthful without
    *  fetching the file. One entry per offloaded list; all optional so old rows still parse. */
   evidenceCounts?: {
