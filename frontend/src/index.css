@@ -714,11 +714,271 @@ mark.mark-active {
 .lp-net td:nth-child(2) { width: 99%; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; }
 .lp-net-note { padding-top: 0.5rem !important; opacity: 0.6; }
 
+/* Closes each deck card on a measured number. Pinned to the bottom by the figure's flex-grow, so
+   all five stat lines sit on one baseline across the track. */
+.lp-card-stat {
+  margin-top: 1.25rem; padding-top: 0.875rem; border-top: 1px solid var(--lp-line);
+  display: flex; align-items: baseline; gap: 0.5rem;
+  font-family: var(--font-mono); font-size: 0.625rem;
+  letter-spacing: -0.01em; text-transform: uppercase;
+}
+.lp-card-stat b { font-size: 0.9375rem; font-weight: 500; letter-spacing: -0.03em; color: var(--foreground); }
+.lp-card-stat span { color: var(--muted-foreground); opacity: 0.75; }
+
+/* ----------------------------------------------------------------- two-tone headings */
+/* The second clause of a headline, set back. Carries the turn in the sentence without a second
+   type size — the reference leans on this everywhere and it is most of why its headings read. */
+.lp-dim { color: var(--muted-foreground); }
+
+/* ------------------------------------------------------------------- window mockups */
+/* Real markup, not screenshots: sharp at any zoom, follows the theme, never goes stale. */
+.lp-win {
+  border: 1px solid var(--lp-line); border-radius: 8px; overflow: hidden;
+  background: var(--card);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent),
+              0 12px 32px -12px color-mix(in oklab, var(--foreground) 18%, transparent);
+}
+.lp-win-bar {
+  display: flex; align-items: center; gap: 0.625rem;
+  padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--lp-line);
+  background: color-mix(in oklab, var(--foreground) 3%, var(--card));
+}
+.lp-win-dots { display: flex; gap: 0.3125rem; flex: none; }
+.lp-win-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--lp-rule); }
+.lp-win-title {
+  font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: -0.01em;
+  color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lp-win-body { background: var(--background); }
+.lp-win-term .lp-win-body { background: color-mix(in oklab, var(--foreground) 4%, var(--background)); }
+
+/* --- the session detail: replay stage beside the evidence rail, as the app actually lays it out */
+.lp-session { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+.lp-session-stage { padding: 0.75rem; border-right: 1px solid var(--lp-line); min-width: 0; }
+.lp-stage-chrome {
+  font-family: var(--font-mono); font-size: 0.5625rem; color: var(--muted-foreground);
+  padding: 0.3rem 0.5rem; margin-bottom: 0.5rem; border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lp-stage-frame {
+  position: relative; aspect-ratio: 16 / 10; border-radius: 4px;
+  border: 1px solid var(--lp-line); background: var(--card);
+  padding: 0.75rem; overflow: hidden;
+}
+.lp-stage-skeleton { display: flex; flex-direction: column; gap: 0.5rem; }
+.lp-stage-skeleton > span {
+  height: 7px; border-radius: 2px;
+  background: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+/* --- the page under recording: a checkout, mid-failure */
+.lp-stage-nav {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding-bottom: 0.5rem; margin-bottom: 0.625rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+.lp-stage-logo {
+  width: 26px; height: 7px; border-radius: 2px;
+  background: color-mix(in oklab, var(--foreground) 22%, transparent);
+}
+.lp-stage-nav i {
+  width: 16px; height: 5px; border-radius: 2px;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.lp-stage-cart {
+  margin-left: auto; display: grid; place-items: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: color-mix(in oklab, var(--lp-accent) 22%, transparent);
+  color: var(--lp-accent); font-family: var(--font-mono); font-size: 0.5rem;
+}
+.lp-stage-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.lp-stage-hero {
+  border-radius: 3px; min-height: 78px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.lp-stage-side { display: flex; flex-direction: column; gap: 0.4375rem; }
+.lp-stage-side > span {
+  height: 6px; border-radius: 2px;
+  background: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+/* The input that posts a string where the API wants an integer — the cause, on screen. */
+.lp-stage-qty {
+  display: flex; align-items: center; gap: 0.375rem; margin: 0.125rem 0;
+  font-family: var(--font-mono); font-size: 0.5rem; color: var(--muted-foreground);
+}
+.lp-stage-qty em {
+  font-style: normal; padding: 0.1rem 0.375rem; border-radius: 2px;
+  border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent);
+  color: var(--foreground);
+}
+.lp-stage-cta-wrap { position: relative; align-self: flex-start; margin-top: 0.25rem; }
+.lp-stage-cta {
+  padding: 0.3rem 0.5rem; border-radius: 3px;
+  font-size: 0.5rem; letter-spacing: -0.01em;
+  background: color-mix(in oklab, var(--lp-accent) 26%, transparent);
+  color: color-mix(in oklab, var(--lp-accent) 70%, var(--foreground));
+  opacity: 0.55; cursor: default;
+}
+/* The pointer rests on the button that never enabled. */
+.lp-stage-cursor {
+  position: absolute; right: 9px; bottom: -7px; width: 10px; height: 14px;
+  background: var(--foreground);
+  clip-path: polygon(0 0, 0 100%, 27% 76%, 44% 100%, 62% 90%, 45% 66%, 100% 62%);
+}
+.lp-stage-timeline { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.625rem; }
+.lp-tlbar {
+  position: relative; flex: 1; height: 5px; border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.lp-tlbar i { position: absolute; top: 50%; translate: -50% -50%; }
+.lp-tl-flag { width: 6px; height: 6px; border-radius: 50%; background: var(--lp-accent); }
+.lp-tl-err { width: 6px; height: 6px; border-radius: 50%; background: var(--lp-bad); }
+.lp-tl-head { width: 2px; height: 11px; border-radius: 1px; background: var(--foreground); }
+.lp-tl-time { font-family: var(--font-mono); font-size: 0.5625rem; color: var(--muted-foreground); flex: none; }
+
+/* The rail carries more rows than can fit on purpose (see the mockup). Taking its content out of
+   flow means the stage column alone decides the window's height — otherwise the list stretched the
+   window and the replay it sits next to collapsed to a sliver. */
+.lp-session-rail { position: relative; min-width: 0; }
+.lp-rail-inner { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.lp-rail-tabs {
+  display: flex; gap: 0.75rem; padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--lp-line); overflow: hidden;
+}
+.lp-rail-tabs span {
+  font-size: 0.5625rem; letter-spacing: 0.01em; color: var(--muted-foreground);
+  white-space: nowrap; padding-bottom: 0.35rem; margin-bottom: -0.6rem;
+}
+.lp-rail-tabs .is-on { color: var(--foreground); border-bottom: 1.5px solid var(--lp-accent); }
+/* flex:1 + hidden: the list is authored longer than any container, so it fills the rail at every
+   width and clips instead of leaving dead panel below the last row. */
+.lp-rail-rows {
+  flex: 1; min-height: 0; overflow: hidden;
+  padding: 0.375rem; font-family: var(--font-mono); font-size: 0.5625rem;
+}
+.lp-rail-rows li {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.3rem 0.375rem; border-radius: 3px; color: var(--muted-foreground);
+}
+.lp-rail-rows b { font-weight: 400; opacity: 0.55; flex: none; }
+.lp-rail-rows span { flex: 1; min-width: 0; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-rail-rows em { font-style: normal; flex: none; }
+.lp-rail-rows .ok { opacity: 0.55; }
+.lp-rail-rows .bad { color: var(--lp-bad); }
+/* The row the flag points at. Tinted rather than outlined so it reads as selected, not as an error
+   of its own — the 500 beside it is already carrying that. */
+.lp-rail-rows .is-hit { background: color-mix(in oklab, var(--lp-accent) 13%, transparent); }
+.lp-rail-more {
+  flex: none; padding: 0.5rem 0.75rem; border-top: 1px solid var(--lp-line);
+  font-family: var(--font-mono); font-size: 0.5625rem; color: var(--muted-foreground);
+  opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* --- the terminal: an agent arriving at the cause. The payoff, so it gets the front layer. */
+.lp-term {
+  margin: 0; padding: 0.9375rem 1.125rem;
+  font-family: var(--font-mono); font-size: 0.625rem; line-height: 1.75;
+  white-space: pre; overflow-x: auto; color: var(--muted-foreground);
+}
+.lp-term-cmd { color: var(--foreground); }
+.lp-term-dim { opacity: 0.62; }
+.lp-term-ok { color: var(--lp-good); }
+.lp-term-label {
+  color: var(--lp-accent); text-transform: uppercase; letter-spacing: 0.02em; font-size: 0.5625rem;
+}
+.lp-term-body { color: var(--foreground); }
+.lp-term-quote { color: var(--lp-bad); }
+
+/* --- the recorder pill, on the page being recorded */
+.lp-rec { position: relative; padding: 1.25rem 1.25rem 3.5rem; }
+.lp-rec-page .lp-stage-hero { min-height: 108px; }
+.lp-rec-pill {
+  position: absolute; left: 50%; bottom: 0.875rem; translate: -50% 0;
+  display: flex; align-items: center; gap: 0.625rem;
+  padding: 0.4rem 0.75rem; border-radius: 999px;
+  border: 1px solid var(--lp-line); background: var(--card);
+  box-shadow: 0 6px 20px -8px color-mix(in oklab, var(--foreground) 30%, transparent);
+  font-family: var(--font-mono); font-size: 0.5625rem; color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.lp-rec-pill b { color: var(--foreground); font-weight: 400; }
+.lp-rec-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--lp-bad);
+  animation: lp-blink 1.8s ease-in-out infinite;
+}
+.lp-rec-sep { width: 1px; height: 10px; background: var(--lp-line); }
+.lp-rec-stop { color: var(--foreground); }
+@keyframes lp-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* ------------------------------------------------------------------------- hero art */
+/* Two windows, overlapping: the session on the back plane and the agent's conclusion in front of
+   it. The claim and its proof in one image. */
+/* The art runs the full width under the copy rather than beside it. Side by side, neither the
+   session nor the terminal was wide enough to read, which defeats the point of showing them. */
+.lp-hero-art { position: relative; margin-top: 4rem; }
+/* Stacked with a gap until there is room to overlap. Pulling them together at phone widths put
+   the terminal's title bar across the replay's scrubber and neither one could be read. */
+.lp-hero-front { margin-top: 1.25rem; width: 100%; }
+@media (min-width: 900px) {
+  .lp-hero-back { margin-left: 4rem; }
+  .lp-hero-front {
+    position: absolute; left: 0; bottom: -2.5rem; margin: 0;
+    width: 25.5rem; z-index: 1;
+  }
+}
+
+/* --------------------------------------------------------------- numbered feature rows */
+.lp-row { display: grid; gap: 2.5rem; align-items: center; }
+.lp-row-n {
+  font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
+  letter-spacing: -0.02em; text-transform: uppercase; color: var(--foreground);
+}
+.lp-row-n span { color: var(--muted-foreground); opacity: 0.7; }
+/* A quiet text link with the outbound arrow the reference uses under each numbered row. */
+.lp-learn {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  font-size: 0.8125rem; color: var(--foreground);
+  padding-bottom: 2px; border-bottom: 1px solid var(--lp-rule);
+  transition: border-color 160ms ease, color 160ms ease;
+}
+.lp-learn:hover { border-color: var(--lp-accent); color: var(--lp-accent); }
+.lp-learn:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 3px; border-radius: 2px; }
+@media (min-width: 900px) {
+  /* Weighted toward the figure: the mockups carry two panes of real UI and stop being readable
+     much below this, whereas the copy is a short paragraph either way. */
+  .lp-row { grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.12fr); gap: 4rem; }
+  /* Alternating sides, by explicit placement rather than `order`. `order` reorders items into the
+     grid's cells, so a flipped row handed its mockup the narrow copy column and its paragraph the
+     wide figure column — the session mockup lost a third of its width and started truncating.
+     Placing both explicitly keeps the DOM order (copy first, so a screen reader gets the number and
+     heading before the figure) while giving the figure the wide side on every row. */
+  .lp-row.is-flipped { grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.78fr); }
+  .lp-row.is-flipped .lp-row-copy { grid-area: 1 / 2; }
+  .lp-row.is-flipped .lp-row-art { grid-area: 1 / 1; }
+}
+
+/* ------------------------------------------------------------------ scroll reveal */
+[data-reveal] {
+  opacity: 0; transform: translateY(14px);
+  transition: opacity 620ms cubic-bezier(0.22, 1, 0.36, 1), transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-reveal][data-revealed] { opacity: 1; transform: none; }
+
 @media (max-width: 640px) {
-  .lp-card-tall { height: 30rem; padding: 1.25rem; }
+  .lp-card-tall { height: 32rem; padding: 1.25rem; }
   .lp-deck-track { grid-auto-columns: 88%; }
+  /* Below this the two-pane session mockup is unreadable at any font size, so it becomes the
+     replay alone — still the real thing, just the half that carries the point. */
+  .lp-session { grid-template-columns: 1fr; }
+  .lp-session-rail { display: none; }
+  .lp-session-stage { border-right: 0; }
+  .lp-term { font-size: 0.5625rem; padding: 0.75rem 0.875rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lp-deck-track { scroll-behavior: auto; }
-  .lp-card-tall, .lp-dot { transition: none; }
+  .lp-card-tall, .lp-dot, .lp-learn { transition: none; }
+  .lp-rec-dot { animation: none; }
+  [data-reveal] { opacity: 1; transform: none; transition: none; }
 }

@@ -11,6 +11,8 @@ export interface DeckCard {
   body: string;
   /** The concrete artefact this card is about — rendered as the card's own illustration. */
   figure: React.ReactNode;
+  /** A measured number closing the card, in the reference's `8,932,104 AUTO-HEALS` register. */
+  stat: { value: string; label: string };
 }
 
 export function PlatformDeck({ cards }: { cards: DeckCard[] }) {
@@ -81,6 +83,12 @@ export function PlatformDeck({ cards }: { cards: DeckCard[] }) {
             <h3 className="lp-card-title">{c.title}</h3>
             <div className="lp-card-figure">{c.figure}</div>
             <p className="lp-card-body">{c.body}</p>
+            {/* Closes the card on a number rather than trailing off — the reference's move, and it
+                keeps every card the same height regardless of how long the body runs. */}
+            <p className="lp-card-stat">
+              <b>{c.stat.value}</b>
+              <span>{c.stat.label}</span>
+            </p>
           </article>
         ))}
       </div>
