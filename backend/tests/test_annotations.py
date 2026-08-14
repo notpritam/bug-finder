@@ -88,10 +88,13 @@ def session_id(author, stranger):
     yield human_id
 
     author.delete(f"{API}/{human_id}", timeout=TIMEOUT)
-    for s in (author, stranger):
-        s.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
+    # Verify BEFORE closing the accounts: reads need a token, and the only token that can confirm
+    # the session is gone belongs to the account about to be deleted. Checking afterwards asserts
+    # 404 against a 401 and reports a cleanup failure that never happened.
     gone = author.get(f"{API}/{human_id}", timeout=TIMEOUT)
     assert gone.status_code == 404, f"test session {human_id} was left behind"
+    for s in (author, stranger):
+        s.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
 
 
 def _annotations(human_id, session):
