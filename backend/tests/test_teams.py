@@ -57,11 +57,17 @@ def made(alice, bob):
     fails loudly if anything survives, because a suite that leaks quietly is a suite nobody notices
     is leaking.
     """
-    ids: list[str] = []
+    ids: list[tuple[str, requests.Session]] = []
     yield ids
     leaked = []
-    for tid in ids:
-        if not any(s.delete(f"{API}/{tid}", timeout=TIMEOUT).status_code in (200, 404) for s in (alice, bob)):
+    # Deleting a team requires membership, and two tests create teams with throwaway accounts they
+    # then close inside the test — so the creator must be tried FIRST, while it still exists.
+    # alice/bob are the fallback for teams they are themselves in.
+    for tid, owner in ids:
+        if not any(
+            s.delete(f"{API}/{tid}", timeout=TIMEOUT).status_code in (200, 404)
+            for s in (owner, alice, bob)
+        ):
             leaked.append(tid)
     for s in (alice, bob):
         s.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
@@ -73,7 +79,9 @@ def _new_team(session, made, name=None, description=""):
     res = session.post(API, json={"name": name, "description": description}, timeout=TIMEOUT)
     assert res.status_code == 200, res.text
     team = res.json()
-    made.append(team["id"])
+    # Recorded with its creator: teardown needs an account that is a member, and some of these
+    # accounts do not outlive the test that made them.
+    made.append((team["id"], session))
     return team
 
 
