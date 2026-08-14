@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .auth import current_user
+from .auth import current_user, require_user
 from . import events
 from .blocks import blocks_for_body, blocks_to_text, normalize_blocks
 from .core import bugs_col, comments_col, now_ms
