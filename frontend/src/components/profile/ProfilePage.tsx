@@ -28,8 +28,10 @@ export function ProfilePage({
 
   if (!user) {
     return (
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
       <div className="mx-auto w-full max-w-[720px] px-5 py-6">
         <p className="text-[13px] text-muted-foreground">Sign in to see your profile.</p>
+      </div>
       </div>
     );
   }
@@ -54,7 +56,8 @@ export function ProfilePage({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-5 py-6">
+    <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
+      <div className="mx-auto w-full max-w-[720px] px-5 py-6">
       <header className="mb-5">
         <h1 className="text-[19px] font-bold tracking-tight">Your profile</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
@@ -174,6 +177,7 @@ export function ProfilePage({
           </button>
         </section>
       )}
+    </div>
     </div>
   );
 }

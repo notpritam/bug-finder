@@ -60,6 +60,12 @@ export function ConnectPage({ user }: { user: AuthUser | null }) {
   const command = `claude mcp add --transport http bug-finder ${endpoint}`;
 
   return (
+    // The scroll container every other page has and these two did not. `body` is `overflow:
+    // hidden` and this is a direct flex child of a column `main`, so without it the content simply
+    // overflowed and was clipped — no scrollbar, no way down. On a 1366×768 laptop that put the
+    // whole agent-tools list and both the Authorization and account cards permanently out of
+    // reach, on the one page you send a new person to install the recorder.
+    <div className="min-h-0 flex-1 overflow-y-auto scroll-thin bg-background">
     <div className="mx-auto w-full max-w-[860px] px-5 py-6">
       <header className="mb-5">
         <h1 className="text-[19px] font-bold tracking-tight">Get set up</h1>
@@ -187,6 +193,7 @@ export function ConnectPage({ user }: { user: AuthUser | null }) {
           )}
         </Card>
       </div>
+    </div>
     </div>
   );
 }

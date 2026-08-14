@@ -45,7 +45,7 @@ export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) =>
   const label = "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80";
 
   return (
-    <div className="grid h-full place-items-center overflow-y-auto bg-background p-6">
+    <div className="flex h-full items-start justify-center overflow-y-auto bg-background p-6 py-[max(1.5rem,6vh)]">
       <div className="w-full max-w-md">
         <div className="mb-5 flex items-center justify-center gap-2.5">
           <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card">
