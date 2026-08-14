@@ -518,6 +518,10 @@ mark.mark-active {
      toward --foreground fixes light without washing out dark, and stays one expression for both. */
   --lp-quiet: color-mix(in oklab, var(--muted-foreground) 55%, var(--foreground));
   background: var(--background);
+  /* The deck track deliberately runs past the container to the viewport edge, and its bleed is
+     computed from 100vw — which counts the scrollbar this element itself owns. Clipping x absorbs
+     that overhang instead of letting it open a horizontal scrollbar. */
+  overflow-x: clip;
 }
 .dark .lp {
   --lp-rule: oklch(0.355 0.013 258);
@@ -528,8 +532,15 @@ mark.mark-active {
   --lp-fill: oklch(0.205 0.010 258);
 }
 
-.lp-wrap { width: 100%; max-width: 1080px; margin-inline: auto; padding-inline: 1.5rem; }
-@media (min-width: 640px) { .lp-wrap { padding-inline: 2.5rem; } }
+/* 90rem to match the reference, which runs a 1440px container with 32px gutters. At 1080 the page
+   left a third of a wide screen empty and squeezed the two-pane mockups; the measure of the text
+   inside is still capped per-block, so widening the container gives the figures room without
+   letting paragraphs run long. --lp-gutter is read back by the full-bleed calc below. */
+.lp-wrap {
+  --lp-gutter: 1.5rem;
+  width: 100%; max-width: 90rem; margin-inline: auto; padding-inline: var(--lp-gutter);
+}
+@media (min-width: 640px) { .lp-wrap { --lp-gutter: 2rem; } }
 
 /* Tier 1 — the structural rule. */
 .lp-rule-b { border-bottom: 1px solid var(--lp-rule); }
@@ -544,7 +555,9 @@ mark.mark-active {
   text-wrap: balance;
 }
 .lp-title {
-  font-size: clamp(1.5rem, 3.2vw, 2rem);
+  /* Lifted with the container. At 32px these section headings read as sub-heads on a 1440 page;
+     the reference sets its equivalents at 40-56px. 44 keeps a clear step below --lp-display's 56. */
+  font-size: clamp(1.625rem, 3.4vw, 2.75rem);
   line-height: 1.16;
   letter-spacing: -0.025em;
   font-weight: 500;
@@ -645,14 +658,37 @@ mark.mark-active {
 .lp-deck-nav:disabled { opacity: 0.3; }
 .lp-deck-nav:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
 
+/* Heading and controls pinned inside the container; the track beside them runs to the edge of the
+   screen. Stacked below 900px, where there is no room for a side column. */
+.lp-deck { display: grid; gap: 2rem; }
+.lp-deck-aside { min-width: 0; }
+.lp-deck-main { min-width: 0; }
+.lp-deck-controls { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-top: 2rem; }
+.lp-dots { display: flex; gap: 0.375rem; margin-top: 1.25rem; }
+
+@media (min-width: 900px) {
+  .lp-deck { grid-template-columns: 22.5rem minmax(0, 1fr); gap: 3rem; align-items: start; }
+  /* Full-bleed right. The distance from the container's content edge to the viewport edge is half
+     the leftover space plus the gutter — which is exactly what a negative right margin has to
+     cancel. Written against the container's own --lp-gutter so the two can't drift apart.
+     100vw counts the scrollbar; .lp clips the overhang. */
+  .lp-deck-main {
+    margin-right: calc(-1 * ((100vw - min(100vw, 90rem)) / 2 + var(--lp-gutter)));
+  }
+}
+
 /* Scroll-snap rather than a JS carousel: swipe, shift-wheel and the buttons all drive one
    mechanism, so they cannot disagree about which card is active. */
 .lp-deck-track {
   display: grid; grid-auto-flow: column;
-  grid-auto-columns: min(88%, 22rem);
+  grid-auto-columns: min(86%, 23rem);
   gap: 1rem;
   overflow-x: auto; scroll-snap-type: x mandatory;
   scrollbar-width: none; padding-bottom: 0.25rem;
+  /* So the last card clears the screen edge instead of sitting flush against it. Padding rather
+     than a spacer element — inside `grid-auto-flow: column` a ::after becomes a grid item and gets
+     a full card-width column, which would add a card's worth of empty space to the track. */
+  padding-right: var(--lp-gutter);
 }
 .lp-deck-track::-webkit-scrollbar { display: none; }
 .lp-deck-track:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 4px; border-radius: 6px; }
@@ -766,9 +802,12 @@ mark.mark-active {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .lp-stage-frame {
-  position: relative; aspect-ratio: 16 / 10; border-radius: 4px;
+  position: relative; aspect-ratio: 16 / 9; border-radius: 4px;
   border: 1px solid var(--lp-line); background: var(--card);
   padding: 0.75rem; overflow: hidden;
+  /* The frame is sized by aspect ratio, so its content has to stretch into it — otherwise the
+     wider the container gets, the more empty page sits below the checkout. */
+  display: flex; flex-direction: column;
 }
 .lp-stage-skeleton { display: flex; flex-direction: column; gap: 0.5rem; }
 .lp-stage-skeleton > span {
@@ -796,7 +835,7 @@ mark.mark-active {
   background: color-mix(in oklab, var(--lp-accent) 22%, transparent);
   color: var(--lp-accent); font-family: var(--font-mono); font-size: 0.5rem;
 }
-.lp-stage-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.lp-stage-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; flex: 1; min-height: 0; }
 .lp-stage-hero {
   border-radius: 3px; min-height: 78px;
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
@@ -811,12 +850,22 @@ mark.mark-active {
   display: flex; align-items: center; gap: 0.375rem; margin: 0.125rem 0;
   font-family: var(--font-mono); font-size: 0.5rem; color: var(--muted-foreground);
 }
+/* The total that never updated — the thing the reporter flagged, visible in the frame. */
+.lp-stage-total {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-top: 0.375rem; padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  font-family: var(--font-mono); font-size: 0.5rem; color: var(--lp-quiet);
+}
+.lp-stage-total em { font-style: normal; color: var(--foreground); }
 .lp-stage-qty em {
   font-style: normal; padding: 0.1rem 0.375rem; border-radius: 2px;
   border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent);
   color: var(--foreground);
 }
-.lp-stage-cta-wrap { position: relative; align-self: flex-start; margin-top: 0.25rem; }
+/* Sits directly under the total, the way a checkout does. Pinning it to the bottom of the stretched
+   column instead left a run of empty page between the price and the button. */
+.lp-stage-cta-wrap { position: relative; align-self: flex-start; margin-top: 0.5rem; }
 .lp-stage-cta {
   padding: 0.3rem 0.5rem; border-radius: 3px;
   font-size: 0.5rem; letter-spacing: -0.01em;

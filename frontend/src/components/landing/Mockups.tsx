@@ -44,6 +44,16 @@ export function SessionMockup() {
     ["0:31", "GET", "/api/pricing", false],
     ["0:33", "POST", "/api/telemetry", false],
     ["0:38", "GET", "/api/user", false],
+    ["0:41", "GET", "/api/shipping", false],
+    ["0:44", "POST", "/api/telemetry", false],
+    ["0:47", "GET", "/api/cart", false],
+    ["0:52", "GET", "/api/flags", false],
+    ["0:55", "POST", "/api/telemetry", false],
+    ["0:58", "GET", "/api/inventory", false],
+    ["1:02", "GET", "/api/pricing", false],
+    ["1:05", "POST", "/api/cart", false],
+    ["1:09", "GET", "/api/user", false],
+    ["1:13", "GET", "/api/session", false],
   ];
   return (
     <AppWindow title="BF-128 · Request ID: Mismatch Version 3">
@@ -68,6 +78,11 @@ export function SessionMockup() {
                   <em>3</em>
                 </div>
                 <span style={{ width: "58%" }} />
+                <span style={{ width: "34%" }} />
+                <div className="lp-stage-total">
+                  <b>total</b>
+                  <em>$142.00</em>
+                </div>
                 {/* The cursor is a child of the button's wrapper, not absolutely placed in the
                     frame — that way it stays on the control at every mockup size. */}
                 <span className="lp-stage-cta-wrap">

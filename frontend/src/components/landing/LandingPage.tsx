@@ -329,19 +329,19 @@ export function LandingPage() {
 
       {/* ----------------------------------------------------------- platform */}
       <section id="platform" className="lp-rule-b scroll-mt-16">
-        <div className="lp-wrap py-14 sm:py-20">
-          <div data-reveal>
-            <p className="lp-eyebrow">The platform</p>
-            <h2 className="lp-title mt-4 max-w-[26ch]">
-              Five things a captured session gives you.
-            </h2>
-            <p className="lp-body mt-4 max-w-[56ch]">
-              None of them ask the reporter for anything. The browser already knew all of it.
-            </p>
-          </div>
-          <div className="mt-10">
-            <PlatformDeck cards={CARDS} />
-          </div>
+        <div className="lp-wrap py-14 sm:py-20" data-reveal>
+          <PlatformDeck
+            cards={CARDS}
+            aside={
+              <>
+                <p className="lp-eyebrow">The platform</p>
+                <h2 className="lp-title mt-4">Five things a captured session gives you.</h2>
+                <p className="lp-body mt-4">
+                  None of them ask the reporter for anything. The browser already knew all of it.
+                </p>
+              </>
+            }
+          />
         </div>
       </section>
 
