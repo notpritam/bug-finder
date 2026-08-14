@@ -408,7 +408,11 @@ function Shell({
 
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
-    seg[0] === "bugs"
+    // "sessions", not "bugs". The routes were renamed and this check was not, so every one of the
+    // six session views fell through to the default and the sidebar highlighted "All sessions" on
+    // all of them — the list was right, only the orientation cue was wrong, which is the single
+    // thing the sidebar is there to provide.
+    seg[0] === "sessions"
       ? (PATH_TO_VIEW[seg[1]] ?? "all")
       : ((["drafts", "initiatives", "teams", "insights", "connect", "profile", "admin"] as const).find((v) => v === seg[0]) ?? "all");
 

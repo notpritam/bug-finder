@@ -117,8 +117,30 @@ async def create_team(
 
 
 async def _join(user_id: str, team_id: str) -> None:
-    """`$addToSet`, so joining twice is a no-op rather than a duplicate membership."""
-    await users_col.update_one({"id": user_id}, {"$addToSet": {"teamIds": team_id}})
+    """Join a team, migrating any legacy membership on the way in.
+
+    `$addToSet`, so joining twice is a no-op rather than a duplicate membership.
+
+    The migration matters because `resolve_membership` reads the legacy `team` string ONLY while
+    `teamIds` is empty. Without this, the first explicit join silently ended every implicit one: a
+    user carrying `team: "Platform"` who joined Growth stopped resolving to Platform the moment the
+    write landed — they left a team they never asked to leave, and nothing told them. So the legacy
+    team is promoted to a real membership here, at the one moment we know the user is thinking about
+    teams at all, and the string is cleared once it has been honoured.
+    """
+    user = await users_col.find_one({"id": user_id}, {"_id": 0, "teamIds": 1, "team": 1})
+    add = {team_id}
+    legacy = ((user or {}).get("team") or "").strip()
+    if legacy and not (user or {}).get("teamIds"):
+        match = await teams_col.find_one({"slug": _slug(legacy)}, {"id": 1})
+        if match:
+            add.add(match["id"])
+    await users_col.update_one(
+        {"id": user_id},
+        # `team` is unset only once it has been converted into a real membership, so a string that
+        # names no existing team survives — a team by that name may still be created later.
+        {"$addToSet": {"teamIds": {"$each": sorted(add)}}, **({"$unset": {"team": ""}} if len(add) > 1 else {})},
+    )
 
 
 @router.get("/api/teams/{team_id}")

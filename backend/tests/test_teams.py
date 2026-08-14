@@ -209,3 +209,39 @@ def test_the_legacy_free_text_team_still_finds_its_team(made):
             dave.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
     finally:
         carol.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
+
+
+def test_joining_a_team_does_not_silently_drop_your_legacy_one(made):
+    """The regression: resolve_membership reads the legacy `team` string ONLY while teamIds is
+    empty, so the first explicit join used to end every implicit membership. A user carrying
+    team="Platform" who joined Growth left Platform without asking to and without being told."""
+    legacy_name = f"PyTestLegacy{uuid.uuid4().hex[:6]}"
+    other_name = f"PyTestOther{uuid.uuid4().hex[:6]}"
+
+    founder = _account("founder")
+    legacy_team = _new_team(founder, made, legacy_name)
+    other_team = _new_team(founder, made, other_name)
+
+    # Carries only the old free-text string — no teamIds at all.
+    eve = _account("eve", team=legacy_name)
+    try:
+        listed = {t["id"]: t for t in eve.get(API, timeout=TIMEOUT).json()}
+        assert listed[legacy_team["id"]]["joined"] is True, "legacy string should resolve before any join"
+
+        # Join an UNRELATED team. The legacy membership must survive.
+        assert eve.post(f"{API}/{other_team['id']}/join", timeout=TIMEOUT).status_code == 200
+
+        after = {t["id"]: t for t in eve.get(API, timeout=TIMEOUT).json()}
+        assert after[other_team["id"]]["joined"] is True, "the team actually joined"
+        assert after[legacy_team["id"]]["joined"] is True, (
+            "joining one team silently removed the legacy team — the exact regression"
+        )
+
+        # And the legacy team now lists them for real, rather than only via the fallback.
+        roster = eve.get(f"{API}/{legacy_team['id']}", timeout=TIMEOUT).json()
+        assert eve.user["id"] in [m["id"] for m in roster["members"]], (
+            "legacy membership was honoured but never made real, so the roster still omits them"
+        )
+    finally:
+        eve.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
+        founder.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
