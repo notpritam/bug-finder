@@ -2097,6 +2097,19 @@ export function InspectorRail({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
+        {/* Nothing below may render while the evidence is still arriving.
+         *
+         * Every panel's empty check asks "is the array empty?", and until the offloaded file lands
+         * it is — so all eleven of them asserted "No activity captured.", "No network calls
+         * captured.", "No cookies captured on this session." while the download was in flight. On a
+         * large capture that is twenty seconds of the inspector stating, in plain language and in
+         * the largest text on the panel, that the recording is empty. A developer reads the centred
+         * sentence, not the 24px banner three lines above it, and closes the tab. The flagship
+         * feature looked broken precisely on the sessions carrying the most evidence. */}
+        {evidenceLoading ? (
+          <EvidenceLoading counts={bug.evidenceCounts} />
+        ) : (
+          <>
         {tab === "activity" && <ActivityList bug={bug} clock={clock} />}
         {tab === "console" && <ConsoleList bug={bug} clock={clock} />}
         {tab === "network" && <NetworkList bug={bug} clock={clock} />}
@@ -2110,6 +2123,53 @@ export function InspectorRail({
         {tab === "storage" && <StoragePanel bug={bug} clock={clock} />}
         {tab === "layout" && <LayoutEvidence bug={bug} />}
         {tab === "info" && <InfoPanel bug={bug} />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the rail shows while the evidence file is downloading.
+ *
+ * It states the real size of what is coming, because the numbers are already here: `evidenceCounts`
+ * rides on the list row and arrives long before the blob does. So instead of "No activity
+ * captured." the reader gets "1,360 events loading…" — the same twenty seconds, describing what is
+ * happening rather than asserting the opposite of it.
+ *
+ * The skeleton row count is derived from those counts too, so the panel settles into roughly the
+ * shape it is about to have instead of jumping.
+ */
+function EvidenceLoading({ counts }: { counts?: Record<string, number> }) {
+  const total = counts
+    ? (counts.network ?? 0) + (counts.console ?? 0) + (counts.replay ?? 0) + (counts.stateChanges ?? 0)
+    : 0;
+  const rows = Math.min(Math.max(total > 0 ? Math.ceil(total / 40) : 6, 4), 12);
+
+  return (
+    <div className="p-3" role="status" aria-live="polite">
+      <p className="mb-3 text-[12px] text-muted-foreground">
+        {total > 0 ? (
+          <>
+            <span className="font-semibold text-foreground tabular-nums">{total.toLocaleString()}</span> events
+            loading…
+          </>
+        ) : (
+          "Loading this session's evidence…"
+        )}
+      </p>
+      <div className="space-y-1.5" aria-hidden="true">
+        {Array.from({ length: rows }, (_, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="h-3 w-10 shrink-0 animate-pulse rounded bg-muted-foreground/15" />
+            <div
+              className="h-3 animate-pulse rounded bg-muted-foreground/10"
+              // Varied widths so it reads as content arriving rather than a progress bar.
+              style={{ width: `${[82, 61, 74, 45, 68, 90, 55, 78, 63, 71, 49, 85][i % 12]}%` }}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
