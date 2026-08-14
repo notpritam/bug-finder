@@ -513,6 +513,10 @@ mark.mark-active {
   --lp-bad: oklch(0.55 0.17 25);
   --lp-good: oklch(0.52 0.12 155);
   --lp-fill: oklch(0.985 0.002 258);
+  /* Secondary text that still has to be read. --muted-foreground alone measures 3.1:1 on the pale
+     canvas, which fails at the 9-10px sizes the mono labels and mockup interiors use; pulling it
+     toward --foreground fixes light without washing out dark, and stays one expression for both. */
+  --lp-quiet: color-mix(in oklab, var(--muted-foreground) 55%, var(--foreground));
   background: var(--background);
 }
 .dark .lp {
@@ -723,7 +727,7 @@ mark.mark-active {
   letter-spacing: -0.01em; text-transform: uppercase;
 }
 .lp-card-stat b { font-size: 0.9375rem; font-weight: 500; letter-spacing: -0.03em; color: var(--foreground); }
-.lp-card-stat span { color: var(--muted-foreground); opacity: 0.75; }
+.lp-card-stat span { color: var(--lp-quiet); }
 
 /* ----------------------------------------------------------------- two-tone headings */
 /* The second clause of a headline, set back. Carries the turn in the sentence without a second
@@ -859,30 +863,30 @@ mark.mark-active {
 }
 .lp-rail-rows li {
   display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.3rem 0.375rem; border-radius: 3px; color: var(--muted-foreground);
+  padding: 0.3rem 0.375rem; border-radius: 3px; color: var(--lp-quiet);
 }
 .lp-rail-rows b { font-weight: 400; opacity: 0.55; flex: none; }
 .lp-rail-rows span { flex: 1; min-width: 0; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lp-rail-rows em { font-style: normal; flex: none; }
-.lp-rail-rows .ok { opacity: 0.55; }
+.lp-rail-rows .ok { opacity: 0.75; }
 .lp-rail-rows .bad { color: var(--lp-bad); }
 /* The row the flag points at. Tinted rather than outlined so it reads as selected, not as an error
    of its own — the 500 beside it is already carrying that. */
 .lp-rail-rows .is-hit { background: color-mix(in oklab, var(--lp-accent) 13%, transparent); }
 .lp-rail-more {
   flex: none; padding: 0.5rem 0.75rem; border-top: 1px solid var(--lp-line);
-  font-family: var(--font-mono); font-size: 0.5625rem; color: var(--muted-foreground);
-  opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: var(--font-mono); font-size: 0.5625rem; color: var(--lp-quiet);
+  opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* --- the terminal: an agent arriving at the cause. The payoff, so it gets the front layer. */
 .lp-term {
   margin: 0; padding: 0.9375rem 1.125rem;
   font-family: var(--font-mono); font-size: 0.625rem; line-height: 1.75;
-  white-space: pre; overflow-x: auto; color: var(--muted-foreground);
+  white-space: pre; overflow-x: auto; color: var(--lp-quiet);
 }
 .lp-term-cmd { color: var(--foreground); }
-.lp-term-dim { opacity: 0.62; }
+.lp-term-dim { opacity: 0.78; }
 .lp-term-ok { color: var(--lp-good); }
 .lp-term-label {
   color: var(--lp-accent); text-transform: uppercase; letter-spacing: 0.02em; font-size: 0.5625rem;
@@ -935,7 +939,7 @@ mark.mark-active {
   font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
   letter-spacing: -0.02em; text-transform: uppercase; color: var(--foreground);
 }
-.lp-row-n span { color: var(--muted-foreground); opacity: 0.7; }
+.lp-row-n span { color: var(--muted-foreground); }
 /* A quiet text link with the outbound arrow the reference uses under each numbered row. */
 .lp-learn {
   display: inline-flex; align-items: center; gap: 0.375rem;
