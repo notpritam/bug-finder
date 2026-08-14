@@ -113,7 +113,7 @@ export function TeamsPage({ user }: { user: AuthUser | null }) {
             disabled={busy === team.id}
             onClick={() => void toggle(team)}
             className={cn(
-              "shrink-0 rounded-full border px-3 py-1 text-[11.5px] font-semibold transition-colors disabled:opacity-50",
+              "shrink-0 border px-3 py-1 text-[11.5px] font-semibold transition-colors disabled:opacity-50",
               team.joined
                 ? "border-border/60 text-muted-foreground hover:border-[var(--ev-error)]/40 hover:text-[var(--ev-error)]"
                 : "border-primary/50 text-primary hover:bg-primary/10",

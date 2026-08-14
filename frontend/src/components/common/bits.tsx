@@ -26,7 +26,7 @@ export const BUG_SEVERITY_ORDER: BugSeverity[] = ["critical", "high", "medium", 
 export function BugStatusBadge({ status }: { status: BugStatus }) {
   const meta = BUG_STATUS_META[status];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80">
+    <span className="inline-flex items-center gap-1.5 bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80">
       <span className="size-2 rounded-full" style={{ background: meta.color }} />
       {meta.label}
     </span>
@@ -46,7 +46,7 @@ export function BugTagChips({ tags, className }: { tags: string[]; className?: s
   return (
     <span className={cn("flex flex-wrap items-center gap-1", className)}>
       {tags.map((t) => (
-        <span key={t} className="rounded-full bg-secondary px-2 py-px text-[10.5px] font-medium text-secondary-foreground">
+        <span key={t} className="bg-secondary px-2 py-px text-[10.5px] font-medium text-secondary-foreground">
           {t}
         </span>
       ))}

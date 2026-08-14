@@ -73,7 +73,7 @@ export function ProfilePage({
             <p className="truncate text-[12px] text-muted-foreground">{user.email}</p>
           </div>
           {user.isAdmin && (
-            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-primary">
+            <span className="ml-auto inline-flex items-center gap-1 bg-primary/10 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-primary">
               <ShieldCheck className="size-3" /> Admin
             </span>
           )}

@@ -3,6 +3,7 @@
 // ABOUTME: a GitHub release is a 404 for anyone who is not a collaborator. Before this, both the
 // ABOUTME: build and the MCP address were passed on by word of mouth.
 import { useState } from "react";
+import { useRelease } from "@/lib/extension";
 import {
   Bot,
   Check,
@@ -56,6 +57,7 @@ const TOOLS: { group: string; icon: typeof Search; items: [string, string][] }[]
 ];
 
 export function ConnectPage({ user }: { user: AuthUser | null }) {
+  const release = useRelease();
   const endpoint = mcpEndpointUrl();
   const command = `claude mcp add --transport http bug-finder ${endpoint}`;
 
@@ -81,16 +83,23 @@ export function ConnectPage({ user }: { user: AuthUser | null }) {
           404 for anyone who is not a collaborator, and the dashboard is the one place every
           reporter already has. */}
       <Card title="Install the recorder" hint="Chrome" icon={Download} className="mb-4">
+        {/* Read from /api/extension/latest rather than written here. Hardcoding it is how this
+            page spent two releases offering 0.2.3 while the dashboard served 0.2.5 — the number
+            and the filename have to come from whatever the API is actually serving. */}
         <div className="flex flex-wrap items-center gap-2">
-          <a
-            href="/bug-finder-0.2.3.zip"
-            download
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            <Download className="size-3.5" />
-            Download Bug Finder 0.2.3
-          </a>
-          <span className="text-[11.5px] text-muted-foreground">169 KB · Chrome 130+</span>
+          {release ? (
+            <a
+              href={release.downloadUrl}
+              download
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <Download className="size-3.5" />
+              Download Bug Finder {release.version}
+            </a>
+          ) : (
+            <span className="text-[12.5px] text-muted-foreground">Checking for the latest build…</span>
+          )}
+          <span className="text-[11.5px] text-muted-foreground">Chrome 130+</span>
         </div>
         <ol className="mt-3 grid gap-1.5 text-[12px] text-muted-foreground">
           <li>

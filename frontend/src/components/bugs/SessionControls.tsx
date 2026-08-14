@@ -21,7 +21,7 @@ export function InitiativePicker({
   return (
     <label
       className={cn(
-        "relative inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold transition-colors",
+        "relative inline-flex cursor-pointer items-center gap-1.5 px-2.5 py-0.5 text-[11.5px] font-semibold transition-colors",
         current
           ? "bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20"
           : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -138,7 +138,7 @@ export function TagEditor({
             onBlur={() => setTimeout(close, 120)}
             placeholder="add tag"
             aria-label="Add a tag"
-            className="w-24 rounded-full border border-border/60 bg-background px-2 py-px text-[10.5px] outline-none placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="w-24 border border-border/60 bg-background px-2 py-px text-[10.5px] outline-none placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring/50"
           />
           {unused.length > 0 && (
             <span className="absolute left-0 top-full z-20 mt-1 flex max-h-40 min-w-[9rem] flex-col overflow-y-auto rounded-lg border border-border/60 bg-popover p-1 shadow-lg">
@@ -166,7 +166,7 @@ export function TagEditor({
           onClick={() => setAdding(true)}
           data-testid="session-add-tag"
           aria-label="Add a tag"
-          className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-border/70 px-1.5 py-px text-[10.5px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
+          className="inline-flex items-center gap-0.5 border border-dashed border-border/70 px-1.5 py-px text-[10.5px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
         >
           <Plus className="size-2.5" /> tag
         </button>

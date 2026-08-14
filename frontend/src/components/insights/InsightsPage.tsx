@@ -88,7 +88,7 @@ export function InsightsPage({ bugs, initiatives }: { bugs: Bug[]; initiatives: 
                       <td className="px-3 py-2.5 text-right">
                         <span
                           className={cn(
-                            "inline-block min-w-[44px] rounded-full px-2 py-0.5 text-center font-mono text-[11px] font-bold tabular-nums",
+                            "inline-block min-w-[44px] px-2 py-0.5 text-center font-mono text-[11px] font-bold tabular-nums",
                             r.score >= 75
                               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
                               : r.score >= 50

@@ -363,7 +363,7 @@ function NavRow({
             <span
               className={cn(
                 "text-[11px] font-semibold",
-                highlight ? "rounded-full bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" : "text-muted-foreground/80",
+                highlight ? "bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" : "text-muted-foreground/80",
               )}
             >
               {count}

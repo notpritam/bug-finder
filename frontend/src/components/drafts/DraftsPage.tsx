@@ -74,7 +74,7 @@ export function DraftsPage({
                   onClick={() => onOpen(d.id)}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                  <span className="bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
                     Draft
                   </span>
                   <div className="min-w-0 flex-1">

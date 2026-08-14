@@ -250,7 +250,7 @@ export function DraftReview({
           >
             <ArrowLeft className="size-4" /> Drafts
           </button>
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+          <span className="bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
             Draft — not submitted yet
           </span>
           <span className="ml-auto text-[12px] text-muted-foreground">
@@ -382,7 +382,7 @@ export function DraftReview({
                       className="h-7 flex-1 rounded-lg border border-border/60 bg-card px-2 text-[12px] outline-none transition-colors focus:border-primary/50"
                     />
                     {outside && (
-                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" title="Outside the trim window — will be dropped on submit">
+                      <span className="shrink-0 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" title="Outside the trim window — will be dropped on submit">
                         outside trim
                       </span>
                     )}
@@ -566,7 +566,7 @@ function ReportForm({
                 setTagsText(next.join(", "));
                 onChange({ ...draft, tags: next });
               }}
-              className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className="bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
               title={`Add "${tag}"`}
             >
               + {tag}

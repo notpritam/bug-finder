@@ -227,7 +227,7 @@ export function BugDetail({
             <SeveritySelect severity={bug.severity} onChange={(s) => onSeverityChange(bug.id, s)} />
             {bug.env && ENV_META[bug.env as Env] && (
               <span
-                className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80"
+                className="inline-flex items-center gap-1.5 bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80"
                 title="Environment this was reproduced on"
               >
                 <span className="size-2 rounded-full" style={{ background: ENV_META[bug.env as Env].color }} />
@@ -344,7 +344,7 @@ export function BugDetail({
             )}
             {bug.category === "production" && (
               <span
-                className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground"
+                className="inline-flex items-center bg-muted px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground"
                 data-testid="bug-category-production"
                 title="Existing production issue — not tied to initiative work"
               >
@@ -371,7 +371,7 @@ export function BugDetail({
               <button
                 type="button"
                 onClick={() => setSelectedPick(null)}
-                className="absolute right-3 top-12 z-40 inline-flex items-center gap-1 rounded-full bg-foreground/80 px-2.5 py-1 text-[11px] font-semibold text-background shadow-pop transition hover:bg-foreground"
+                className="absolute right-3 top-12 z-40 inline-flex items-center gap-1 bg-foreground/80 px-2.5 py-1 text-[11px] font-semibold text-background shadow-pop transition hover:bg-foreground"
                 title="Clear the element highlight (esc)"
               >
                 ✕ Clear highlight
@@ -629,7 +629,7 @@ function SeveritySelect({ severity, onChange }: { severity: BugSeverity; onChang
 /** Status as a native-select chip, colored by the current status. */
 function StatusSelect({ status, onChange }: { status: BugStatus; onChange: (s: BugStatus) => void }) {
   return (
-    <label className="relative inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80 transition-colors hover:bg-accent">
+    <label className="relative inline-flex cursor-pointer items-center gap-1.5 bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-foreground/80 transition-colors hover:bg-accent">
       <span className="size-2 rounded-full" style={{ background: BUG_STATUS_META[status].color }} />
       {BUG_STATUS_META[status].label}
       <select
@@ -766,7 +766,7 @@ function KeyMoments({
               clock.pause();
               clock.seek(pin.t);
             }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+            className="inline-flex items-center gap-1.5 border border-border/60 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
             title="Recorded during the session — jump the replay here"
           >
             <Flag
@@ -780,7 +780,7 @@ function KeyMoments({
         ) : (
           <span
             key={pin.annotation.id}
-            className="group inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+            className="group inline-flex items-center gap-1.5 border border-dashed border-border/70 px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:border-primary/40 hover:bg-accent"
           >
             <button
               type="button"
@@ -831,7 +831,7 @@ function KeyMoments({
       )}
 
       {composing ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/50 bg-background px-2.5 py-1">
+        <span className="inline-flex items-center gap-1.5 border border-primary/50 bg-background px-2.5 py-1">
           <Flag className="size-3" style={{ color: "var(--ev-marker)" }} />
           <span className="font-mono text-[10.5px] text-muted-foreground">
             {formatOffset(editing ? (annotations.find((a) => a.id === editing)?.t ?? 0) : (adding ?? 0))}
@@ -868,7 +868,7 @@ function KeyMoments({
         <button
           type="button"
           onClick={startAdding}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border/70 px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+          className="inline-flex items-center gap-1 border border-dashed border-border/70 px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
           title="Pin the moment the replay is paused on"
         >
           <Plus className="size-3" />

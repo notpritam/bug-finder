@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, ArrowUpRight, Bot, Clock, MessageSquareX, Network, Rewind, ScanSearch, Terminal } from "lucide-react";
 import { PlatformDeck, type DeckCard } from "./PlatformDeck";
 import { AgentMockup, RecorderMockup, ReplayVideo, SessionShot } from "./Mockups";
+import { InstallSection } from "./InstallSection";
 import { useReveal } from "./useReveal";
 
 /** Real figures from BF-128, a 3m58s recording of app.emergent.sh. Not rounded, not invented — a
@@ -183,7 +184,7 @@ export function LandingPage() {
           </nav>
           <div className="ml-auto flex items-center gap-2 md:ml-0">
             <button type="button" className="lp-navlink" onClick={() => navigate("/auth")}>Sign in</button>
-            <button type="button" className="lp-btn lp-btn-primary lp-btn-sm" onClick={() => navigate("/connect")}>
+            <button type="button" className="lp-btn lp-btn-primary lp-btn-sm" onClick={() => jump("install")}>
               Install
             </button>
           </div>
@@ -208,7 +209,7 @@ export function LandingPage() {
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => navigate("/connect")} className="lp-btn lp-btn-primary">
+              <button type="button" onClick={() => jump("install")} className="lp-btn lp-btn-primary">
                 Install the recorder
                 <ArrowRight className="size-3.5" />
               </button>
@@ -411,6 +412,9 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ------------------------------------------------------------- install */}
+      <InstallSection />
+
       {/* ------------------------------------------------------------------ cta */}
       <section className="lp-rule-b">
         <div className="lp-wrap py-16 sm:py-24" data-reveal>
@@ -422,7 +426,7 @@ export function LandingPage() {
             answers its own questions.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => navigate("/connect")} className="lp-btn lp-btn-primary">
+            <button type="button" onClick={() => jump("install")} className="lp-btn lp-btn-primary">
               Install the recorder
               <ArrowRight className="size-3.5" />
             </button>
@@ -442,7 +446,7 @@ export function LandingPage() {
           </span>
           <span className="lp-meta">Records the session, files the evidence.</span>
           <div className="ml-auto flex gap-5">
-            <button type="button" className="lp-navlink" onClick={() => navigate("/connect")}>Install</button>
+            <button type="button" className="lp-navlink" onClick={() => jump("install")}>Install</button>
             <button type="button" className="lp-navlink" onClick={() => navigate("/auth")}>Sign in</button>
           </div>
         </div>

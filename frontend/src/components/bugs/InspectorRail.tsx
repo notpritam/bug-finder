@@ -337,7 +337,7 @@ function ConsoleList({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
             type="button"
             onClick={() => setFilter(f)}
             className={cn(
-              "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "px-2 py-0.5 text-[11px] font-medium transition-colors",
               filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
@@ -441,7 +441,7 @@ function LayoutEvidence({ bug }: { bug: Bug }) {
               <div className="flex items-center gap-1.5">
                 <span
                   className={cn(
-                    "rounded-full px-1.5 py-px text-[9.5px] font-semibold uppercase",
+                    "px-1.5 py-px text-[9.5px] font-semibold uppercase",
                     issue.severity === "high" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600",
                   )}
                 >
@@ -660,7 +660,7 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+        "px-2 py-0.5 text-[11px] font-medium transition-colors",
         active
           ? danger
             ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
@@ -1242,7 +1242,7 @@ function StatePanel({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
           type="button"
           onClick={() => setOnly("all")}
           className={cn(
-            "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+            "px-2 py-0.5 text-[11px] font-medium transition-colors",
             only === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
           )}
         >
@@ -1255,7 +1255,7 @@ function StatePanel({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
             onClick={() => setOnly(s.id)}
             title={`${s.kind}${s.label ? ` · ${s.label}` : ""} — found via ${s.discoveredVia ?? "?"}`}
             className={cn(
-              "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "px-2 py-0.5 text-[11px] font-medium transition-colors",
               only === s.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
@@ -1350,7 +1350,7 @@ function BrowserLogPanel({ bug, clock }: { bug: Bug; clock: ReplayClock }) {
             type="button"
             onClick={() => setFilter(f)}
             className={cn(
-              "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "px-2 py-0.5 text-[11px] font-medium transition-colors",
               filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
@@ -1636,7 +1636,7 @@ function CookiesPanel({ bug }: { bug: Bug }) {
           type="button"
           onClick={() => setOnlyHttpOnly(false)}
           className={cn(
-            "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+            "px-2 py-0.5 text-[11px] font-medium transition-colors",
             !onlyHttpOnly ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
           )}
         >
@@ -1646,7 +1646,7 @@ function CookiesPanel({ bug }: { bug: Bug }) {
           type="button"
           onClick={() => setOnlyHttpOnly(true)}
           className={cn(
-            "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+            "px-2 py-0.5 text-[11px] font-medium transition-colors",
             onlyHttpOnly ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
           )}
         >
@@ -2056,7 +2056,7 @@ export function InspectorRail({
                 {badge[t.key] != null && (
                   <span
                     className={cn(
-                      "rounded-full px-1.5 text-[9.5px] font-bold",
+                      "px-1.5 text-[9.5px] font-bold",
                       redBadge[t.key] ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400" : "bg-muted text-muted-foreground",
                     )}
                   >

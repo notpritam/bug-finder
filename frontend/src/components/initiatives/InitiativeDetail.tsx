@@ -96,7 +96,7 @@ export function InitiativeDetail({
         <div className="rounded-xl border border-border/60 bg-card p-4 shadow-card">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
               style={{ background: meta.color }}
               data-testid="initiative-status-badge"
             >
@@ -107,7 +107,7 @@ export function InitiativeDetail({
                 ones you would otherwise only find by checking. */}
             <FollowButton initiativeId={initiative.id} className="ml-auto" />
             {initiative.team && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
+              <span className="bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
                 {initiative.team}
               </span>
             )}
@@ -338,7 +338,7 @@ function StateChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+        "inline-flex items-center gap-1.5 border px-2 py-0.5 text-[11px] font-medium transition-colors",
         active
           ? "border-primary/50 bg-primary/10 text-foreground"
           : "border-border/60 bg-card text-muted-foreground hover:text-foreground",

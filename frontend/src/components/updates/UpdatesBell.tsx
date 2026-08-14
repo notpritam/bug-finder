@@ -99,7 +99,7 @@ export function UpdatesBell() {
       >
         <Bell className="size-4" />
         {shown.length > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 grid min-w-[15px] place-items-center rounded-full bg-amber-500 px-1 text-[9px] font-bold leading-[15px] text-white">
+          <span className="absolute -right-0.5 -top-0.5 grid min-w-[15px] place-items-center bg-amber-500 px-1 text-[9px] font-bold leading-[15px] text-white">
             {shown.length > 9 ? "9+" : shown.length}
           </span>
         )}

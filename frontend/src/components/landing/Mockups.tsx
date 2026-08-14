@@ -8,6 +8,19 @@
 
 import { useEffect, useRef } from "react";
 
+/** A frame for a real capture. Deliberately NOT AppWindow: these screenshots already contain the
+ *  product's own chrome, so wrapping them in a second set of traffic lights put two title bars back
+ *  to back and read as a mistake. A caption strip carries the session, and the media is inset so
+ *  its own border stops colliding with ours. */
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <figure className="lp-fig">
+      <figcaption className="lp-fig-cap">{label}</figcaption>
+      <div className="lp-fig-media">{children}</div>
+    </figure>
+  );
+}
+
 /** A macOS-style window frame. `title` sits in the bar; children are the content area. */
 export function AppWindow({
   title,
@@ -36,7 +49,7 @@ export function AppWindow({
  *  page; the frame around it is the dashboard. Both are the product, not a drawing of it. */
 export function SessionShot() {
   return (
-    <AppWindow title="BF-147 · Save profile fails with 500">
+    <Figure label="BF-147 · Save profile fails with 500 · dashboard">
       <img
         src="/media/session.webp"
         width={1488}
@@ -46,7 +59,7 @@ export function SessionShot() {
         loading="lazy"
         decoding="async"
       />
-    </AppWindow>
+    </Figure>
   );
 }
 
@@ -77,7 +90,7 @@ export function ReplayVideo() {
   }, []);
 
   return (
-    <AppWindow title="BF-147 · Save profile fails with 500">
+    <Figure label="BF-147 · replaying · screen recording">
       {/* The poster is the failure frame, so the story is legible before a byte of video arrives —
           and stays legible if playback never starts. */}
       <video
@@ -95,7 +108,7 @@ export function ReplayVideo() {
         <source src="/media/replay.webm" type="video/webm" />
         <source src="/media/replay.mp4" type="video/mp4" />
       </video>
-    </AppWindow>
+    </Figure>
   );
 }
 

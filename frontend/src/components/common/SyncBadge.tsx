@@ -45,7 +45,7 @@ export function SyncBadge({ bug, onRetry }: { bug: Bug; onRetry?: () => Promise<
       title={`${reason(bug)}${onRetry ? " Click to retry now." : ""}`}
       data-testid="sync-badge"
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors",
+        "inline-flex shrink-0 items-center gap-1.5 border px-2.5 py-1 text-[11px] font-bold transition-colors",
         bug.syncState === "failed"
           ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-400"
           : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400",

@@ -114,7 +114,7 @@ export function AuthScreen({ onAuthed, onSkip }: { onAuthed: (user: AuthUser) =>
                         onClick={() => setRole(r)}
                         aria-pressed={role === r}
                         className={cn(
-                          "rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors",
+                          "px-2.5 py-1 text-[11.5px] font-medium transition-colors",
                           role === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
                         )}
                       >
