@@ -1075,3 +1075,23 @@ mark.mark-active {
   .lp-rec-dot { animation: none; }
   [data-reveal] { opacity: 1; transform: none; transition: none; }
 }
+
+/* ------------------------------------------------------------------- legal pages */
+/* Long-form prose, which the rest of the landing page has none of: it is all short blocks with
+   their own measures. One readable column, and enough leading to sit in for a while. */
+.lp-legal-body { margin-top: 0.75rem; font-size: 0.9375rem; line-height: 1.72; color: var(--lp-quiet); }
+.lp-legal-body > * + * { margin-top: 0.875rem; }
+.lp-legal-body b { color: var(--foreground); font-weight: 500; }
+.lp-legal-body ul { display: grid; gap: 0.5rem; padding-left: 1.125rem; list-style: disc; }
+.lp-legal-body code {
+  font-family: var(--font-mono); font-size: 0.8125rem; color: var(--foreground);
+  background: color-mix(in oklab, var(--foreground) 8%, transparent); padding: 0.05rem 0.3rem;
+}
+/* The paragraph people need to actually read before installing. */
+.lp-legal-strong {
+  border-left: 2px solid var(--lp-accent); padding-left: 0.875rem; color: var(--foreground);
+}
+.lp-legal-link { color: var(--lp-accent); border-bottom: 1px solid currentColor; }
+/* A reading measure for long-form pages. Overrides .lp-wrap's 90rem, which is sized for figures
+   and grids rather than for prose someone has to read a screen of. */
+.lp-wrap.lp-legal { max-width: 68ch; }

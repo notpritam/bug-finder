@@ -75,6 +75,7 @@ const SHARED_FIELDS = [
 ] as const satisfies readonly (keyof Bug)[];
 const SERVER_EDITABLE = new Set<string>(SHARED_FIELDS.filter((f) => f !== "events" && f !== "updatedAt"));
 
+const PrivacyPage = lazy(() => import("@/components/legal/PrivacyPage").then((m) => ({ default: m.PrivacyPage })));
 const DemoCapture = lazy(() => import("@/components/drafts/DemoCapture").then((m) => ({ default: m.DemoCapture })));
 
 const VIEW_TO_PATH: Record<SidebarView, string> = {
@@ -408,7 +409,11 @@ function Shell({
   );
 
   /** Signed-out root: the pitch, with no app chrome around it. */
-  const showLanding = !user && location.pathname === "/";
+  // Chrome-less routes: the landing page, and the public legal pages a Chrome Web Store reviewer
+  // reads signed out. An app sidebar offering "Inbox" and "Drafts" around a privacy policy is
+  // noise at best, and at worst suggests the policy is part of the signed-in product.
+  const showLanding =
+    (!user && location.pathname === "/") || location.pathname === "/privacy";
   const seg = location.pathname.split("/").filter(Boolean);
   const activeView: SidebarView =
     // "sessions", not "bugs". The routes were renamed and this check was not, so every one of the
@@ -675,6 +680,16 @@ function Shell({
           <Route path="/" element={user ? <Navigate to="/sessions" replace /> : <LandingPage />} />
           {/* The paths used to be /bugs and /bug/:id. Links have already been shared, and a
               shared link that 404s is worse than a redirect that lives forever. */}
+          {/* Public and unauthenticated on purpose — a Chrome Web Store reviewer reads this
+              without an account, and the listing cannot be submitted without the URL resolving. */}
+          <Route
+            path="/privacy"
+            element={
+              <Suspense fallback={null}>
+                <PrivacyPage />
+              </Suspense>
+            }
+          />
           <Route path="/bugs/:view?" element={<LegacyRedirect to="/sessions" />} />
           <Route path="/bug/:humanId" element={<LegacyRedirect to="/session" />} />
           <Route

@@ -448,6 +448,7 @@ export function LandingPage() {
           <div className="ml-auto flex gap-5">
             <button type="button" className="lp-navlink" onClick={() => jump("install")}>Install</button>
             <button type="button" className="lp-navlink" onClick={() => navigate("/auth")}>Sign in</button>
+            <button type="button" className="lp-navlink" onClick={() => navigate("/privacy")}>Privacy</button>
           </div>
         </div>
       </footer>
