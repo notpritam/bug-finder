@@ -5,8 +5,9 @@ import { authToken } from "./auth";
 
 const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
 
-/** Bearer token for the write endpoints — reads stay open. Sent when present; a missing token
- *  still sends the request and lets the server's 401 surface in the normal error path. */
+/** Bearer token for every call, reads included. The list read used to go out bare, which is why
+ *  guarding /api/initiatives silently emptied the sidebar count — the request 401'd and the
+ *  catch turned it into an empty array, so the UI reported "0 initiatives" rather than an error. */
 function authHeaders(): Record<string, string> {
   const token = authToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -41,7 +42,7 @@ async function fail(res: Response, fallback: string): Promise<never> {
 
 export async function listInitiatives(): Promise<Initiative[]> {
   if (!BASE) return [];
-  const res = await fetch(`${BASE}/api/initiatives`);
+  const res = await fetch(`${BASE}/api/initiatives`, { headers: authHeaders() });
   if (!res.ok) return [];
   return (await res.json()) as Initiative[];
 }

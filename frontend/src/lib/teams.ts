@@ -6,8 +6,13 @@ import { authToken } from "./auth";
 
 const BASE = import.meta.env.REACT_APP_BACKEND_URL as string | undefined;
 
-/** Reads stay open — a guest reporter choosing who their capture belongs to is a flow worth
- *  keeping. Writes carry the token and let the server's 401 surface in the normal error path. */
+/** Sent on every call. Only GET /api/teams is still open (names of teams, so a guest reporter can
+ *  pick one); the roster and a team's sessions both need a token, because one carries member email
+ *  addresses and the other carries capture data.
+ *
+ *  NOTE the sharp edge in the readers below: `if (!res.ok) return []` turns a 401 into an empty
+ *  list, so an auth failure renders as "nothing here" rather than as an error. That is exactly how
+ *  guarding /api/initiatives silently changed the sidebar from "3" to "0" and looked like data. */
 function authHeaders(): Record<string, string> {
   const token = authToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -91,7 +96,7 @@ export async function renameTeam(id: string, patch: { name?: string; description
  *  session when it is filed, so this is a real query rather than a client-side guess. */
 export async function teamSessions(id: string): Promise<Bug[]> {
   if (!BASE) return [];
-  const res = await fetch(`${BASE}/api/teams/${encodeURIComponent(id)}/sessions`);
+  const res = await fetch(`${BASE}/api/teams/${encodeURIComponent(id)}/sessions`, { headers: authHeaders() });
   if (!res.ok) return [];
   return (await res.json()) as Bug[];
 }
