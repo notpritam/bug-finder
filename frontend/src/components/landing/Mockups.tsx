@@ -1,7 +1,12 @@
-// ABOUTME: Product mockups for the landing page, built as real markup rather than screenshots —
-// ABOUTME: so they stay sharp at any zoom, follow the theme, and never go stale when the app moves.
-// ABOUTME: The pattern is the one the reference uses: a chromed window, and a second window
-// ABOUTME: overlapping it showing the result — the claim and its proof in one image.
+// ABOUTME: The product, on the landing page. The session views are real captures of the running
+// ABOUTME: dashboard — a screenshot and a screen recording of it replaying BF-147, which the built-in
+// ABOUTME: demo recorder produced from a genuine rrweb session. Regenerate with scripts/capture.mjs
+// ABOUTME: whenever the session UI changes, or these quietly become a picture of an older product.
+// ABOUTME: The recorder pill is still drawn: it is extension UI, which lives outside this app.
+// ABOUTME: The layout follows the reference — a chromed window, and a second window overlapping it
+// ABOUTME: with the result, so the claim and its proof land as one image.
+
+import { useEffect, useRef } from "react";
 
 /** A macOS-style window frame. `title` sits in the bar; children are the content area. */
 export function AppWindow({
@@ -26,128 +31,97 @@ export function AppWindow({
   );
 }
 
-/** The session detail as it actually is: replay stage on the left, evidence rail on the right. */
-export function SessionMockup() {
-  const tabs = ["Activity", "Console", "Network", "State"];
-  // Deliberately more rows than fit. The list is clipped by its container at every width, so the
-  // rail always looks full rather than trailing off into empty panel — and "+442 more" stays true.
-  const rows: [string, string, string, boolean][] = [
-    ["0:09", "GET", "/api/session", false],
-    ["0:11", "GET", "/api/pricing", false],
-    ["0:14", "POST", "/api/cart", true],
-    ["0:14", "GET", "/api/user", false],
-    ["0:15", "POST", "/api/cart", true],
-    ["0:19", "GET", "/api/flags", false],
-    ["0:21", "GET", "/api/inventory", false],
-    ["0:23", "POST", "/api/telemetry", false],
-    ["0:26", "GET", "/api/cart", false],
-    ["0:31", "GET", "/api/pricing", false],
-    ["0:33", "POST", "/api/telemetry", false],
-    ["0:38", "GET", "/api/user", false],
-    ["0:41", "GET", "/api/shipping", false],
-    ["0:44", "POST", "/api/telemetry", false],
-    ["0:47", "GET", "/api/cart", false],
-    ["0:52", "GET", "/api/flags", false],
-    ["0:55", "POST", "/api/telemetry", false],
-    ["0:58", "GET", "/api/inventory", false],
-    ["1:02", "GET", "/api/pricing", false],
-    ["1:05", "POST", "/api/cart", false],
-    ["1:09", "GET", "/api/user", false],
-    ["1:13", "GET", "/api/session", false],
-  ];
+/** The session detail — a real screenshot of the dashboard replaying BF-147, a session produced by
+ *  the built-in demo recorder. The replay's own browser chrome inside the frame is the recorded
+ *  page; the frame around it is the dashboard. Both are the product, not a drawing of it. */
+export function SessionShot() {
   return (
-    <AppWindow title="BF-128 · Request ID: Mismatch Version 3">
-      <div className="lp-session">
-        <div className="lp-session-stage">
-          <div className="lp-stage-chrome">app.emergent.sh/home</div>
-          {/* A recognisable checkout, not a generic wireframe: the frame is a moment in a recording,
-              and the cursor resting on the disabled button is the moment being reported. */}
-          <div className="lp-stage-frame">
-            <div className="lp-stage-nav">
-              <span className="lp-stage-logo" />
-              <i /><i /><i />
-              <span className="lp-stage-cart">2</span>
-            </div>
-            <div className="lp-stage-cols">
-              <div className="lp-stage-hero" />
-              <div className="lp-stage-side">
-                <span style={{ width: "70%" }} />
-                <span style={{ width: "45%" }} />
-                <div className="lp-stage-qty">
-                  <b>qty</b>
-                  <em>3</em>
-                </div>
-                <span style={{ width: "58%" }} />
-                <span style={{ width: "34%" }} />
-                <div className="lp-stage-total">
-                  <b>total</b>
-                  <em>$142.00</em>
-                </div>
-                {/* The cursor is a child of the button's wrapper, not absolutely placed in the
-                    frame — that way it stays on the control at every mockup size. */}
-                <span className="lp-stage-cta-wrap">
-                  <button type="button" className="lp-stage-cta" disabled>Place order</button>
-                  <span className="lp-stage-cursor" aria-hidden="true" />
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="lp-stage-timeline">
-            <span className="lp-tlbar">
-              <i className="lp-tl-flag" style={{ left: "34%" }} />
-              <i className="lp-tl-err" style={{ left: "58%" }} />
-              <i className="lp-tl-head" style={{ left: "58%" }} />
-            </span>
-            <span className="lp-tl-time">0:14 / 3:58</span>
-          </div>
-        </div>
-        {/* Absolutely filled from the stage's height, so the over-long row list clips instead of
-            stretching the window and squashing the replay beside it. */}
-        <div className="lp-session-rail">
-         <div className="lp-rail-inner">
-          <div className="lp-rail-tabs">
-            {tabs.map((t, i) => (
-              <span key={t} className={i === 2 ? "is-on" : ""}>{t}</span>
-            ))}
-          </div>
-          <ul className="lp-rail-rows">
-            {rows.map(([t, verb, path, failed], i) => (
-              <li key={i} className={failed ? "is-hit" : undefined}>
-                <b>{t}</b>
-                <span>{verb} {path}</span>
-                <em className={failed ? "bad" : "ok"}>{failed ? "500" : "200"}</em>
-              </li>
-            ))}
-          </ul>
-          <p className="lp-rail-more">+435 more · bodies retained</p>
-         </div>
-        </div>
-      </div>
+    <AppWindow title="BF-147 · Save profile fails with 500">
+      <img
+        src="/media/session.webp"
+        width={1488}
+        height={700}
+        alt="The Bug Finder session view: the recorded page replayed at 0:04 with the form filled in and the Save button mid-request, next to an activity list where the failing PUT and the console error are highlighted."
+        className="lp-shot"
+        loading="lazy"
+        decoding="async"
+      />
     </AppWindow>
   );
 }
 
-/** The agent, reaching a conclusion from the capture. This is the payoff the product exists for. */
+/** The same session, playing. Screen-recorded off the running dashboard: the DOM replays, the
+ *  playhead moves, and the activity rail highlights each step as it is reached. */
+export function ReplayVideo() {
+  const ref = useRef<HTMLVideoElement | null>(null);
+
+  // Played on intersection rather than by `autoplay`. Three reasons: autoplay did not fire here
+  // even muted, it would pull the file down for visitors who never scroll this far, and it gives
+  // reduced-motion a real answer — controls and a poster instead of movement nobody asked for.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      el.controls = true;
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) void el.play().catch(() => { el.controls = true; });
+        else el.pause();
+      },
+      { threshold: 0.35 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <AppWindow title="BF-147 · Save profile fails with 500">
+      {/* The poster is the failure frame, so the story is legible before a byte of video arrives —
+          and stays legible if playback never starts. */}
+      <video
+        ref={ref}
+        className="lp-shot"
+        width={1488}
+        height={700}
+        poster="/media/replay-poster.webp"
+        muted
+        loop
+        playsInline
+        preload="none"
+        aria-label="Screen recording of the Bug Finder replay: the recorded form fills in, Save is pressed, and the failing PUT lights up in the activity rail."
+      >
+        <source src="/media/replay.webm" type="video/webm" />
+        <source src="/media/replay.mp4" type="video/mp4" />
+      </video>
+    </AppWindow>
+  );
+}
+
+/** The agent, reaching a conclusion from the capture — the payoff the product exists for.
+ *  Every value here is read off BF-147's own API: the request timing and status from
+ *  /network/0, the wording and offsets from /console, the flag from the session itself. */
 export function AgentMockup() {
   return (
     <AppWindow title="claude · bug-finder mcp" className="lp-win-term">
       <pre className="lp-term">
-        <span className="lp-term-cmd">$ claude "why did BF-128 fail?"</span>
+        <span className="lp-term-cmd">$ claude "why did BF-147 fail?"</span>
         {"\n\n"}
-        <span className="lp-term-dim">→ get_session("BF-128")</span>{"\n"}
-        <span className="lp-term-ok">✓</span> <span className="lp-term-dim">read console · network · DOM at 0:14      1.2s</span>{"\n"}
-        <span className="lp-term-ok">✓</span> <span className="lp-term-dim">447 requests · 1 error · 913 DOM events</span>{"\n\n"}
+        <span className="lp-term-dim">→ get_session("BF-147")</span>{"\n"}
+        <span className="lp-term-ok">✓</span> <span className="lp-term-dim">read console · network · DOM at 0:04</span>{"\n"}
+        <span className="lp-term-ok">✓</span> <span className="lp-term-dim">6s recording · 4 console · 1 request</span>{"\n\n"}
         <span className="lp-term-label">Root cause</span>{"\n"}
         <span className="lp-term-body">
-          {"POST /api/cart returned 500 at 0:14, two frames\nbefore the reporter flagged it. Response body:\n"}
+          {"PUT /api/profile returned 500 after 903ms, at\n3.376s — before the reporter flagged it at\n4.279s. Response body:\n"}
         </span>
-        <span className="lp-term-quote">{'  { "error": "variant_id must be an integer" }'}</span>
+        <span className="lp-term-quote">{'  { "error": "profile service unavailable" }'}</span>
         <span className="lp-term-body">
-          {"\n\nThe qty input posts a string. #checkout stayed\ndisabled because the cart never updated."}
+          {"\n\nThe form holds its error state, so the edit is\nnever persisted. The retry fails identically."}
         </span>
         {"\n\n"}
-        <span className="lp-term-label">Fix</span>{"\n"}
-        <span className="lp-term-body">{"cart.ts:88 — coerce variantId before POST."}</span>
+        <span className="lp-term-label">Next</span>{"\n"}
+        <span className="lp-term-body">{"Upstream, not the client — profile service\nwas returning 500 for the whole window."}</span>
       </pre>
     </AppWindow>
   );

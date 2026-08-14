@@ -8,7 +8,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ArrowUpRight, Bot, Clock, MessageSquareX, Network, Rewind, ScanSearch, Terminal } from "lucide-react";
 import { PlatformDeck, type DeckCard } from "./PlatformDeck";
-import { AgentMockup, RecorderMockup, SessionMockup } from "./Mockups";
+import { AgentMockup, RecorderMockup, ReplayVideo, SessionShot } from "./Mockups";
 import { useReveal } from "./useReveal";
 
 /** Real figures from BF-128, a 3m58s recording of app.emergent.sh. Not rounded, not invented — a
@@ -146,8 +146,8 @@ const ROWS = [
     kicker: "replay",
     lead: "The developer opens the session,",
     trail: "not a conversation.",
-    body: "The replay is the real DOM at every frame, next to the waterfall, the console, storage and app state — all on the same clock. Scrub to the flag and the failing request is right there, two frames before it.",
-    mock: <SessionMockup />,
+    body: "The replay is the real DOM at every frame, next to the waterfall, the console, storage and app state — all on the same clock. Scrub to the flag and the failing request is right there, two frames before it. This is a recording of the real thing playing back.",
+    mock: <ReplayVideo />,
     to: "#platform",
   },
   {
@@ -225,7 +225,7 @@ export function LandingPage() {
 
           <div className="lp-hero-art" data-reveal>
             <div className="lp-hero-back">
-              <SessionMockup />
+              <SessionShot />
             </div>
             <div className="lp-hero-front">
               <AgentMockup />

@@ -790,6 +790,9 @@ mark.mark-active {
   color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .lp-win-body { background: var(--background); }
+/* Real captures of the dashboard. They carry their own dark UI, so they sit on the window's body
+   with no padding — a light gutter around a dark screenshot reads as a bug. */
+.lp-shot { display: block; width: 100%; height: auto; }
 .lp-win-term .lp-win-body { background: color-mix(in oklab, var(--foreground) 4%, var(--background)); }
 
 /* --- the session detail: replay stage beside the evidence rail, as the app actually lays it out */
