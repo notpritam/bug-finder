@@ -211,6 +211,37 @@ async def patch_team(
     return _public(fresh or doc)
 
 
+@router.delete("/api/teams/{team_id}")
+async def delete_team(team_id: str, user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    """Remove a team, and every membership pointing at it.
+
+    This exists because without it nothing could ever be tidied up: the test suite created teams
+    it had no way to remove, and 75 of them accumulated in the shared database before anyone
+    noticed — the same accretion the initiatives suite already learned about the hard way.
+
+    A team holding sessions is refused rather than cascaded. Those sessions were stamped at filing
+    and are evidence; silently unstamping a body of work to satisfy a delete is the kind of quiet
+    data loss this product exists to prevent. Empty the team or keep it.
+    """
+    doc = await teams_col.find_one({"id": team_id}, {"_id": 0, "name": 1})
+    if not doc:
+        raise HTTPException(404, f"team {team_id} not found")
+    if team_id not in await resolve_membership(user) and not is_admin_doc(user):
+        raise HTTPException(403, "Join the team to delete it.")
+
+    held = await bugs_col.count_documents({"teamIds": team_id})
+    if held:
+        raise HTTPException(
+            409,
+            f"{doc['name']} still has {held} session{'s' if held != 1 else ''} filed against it. "
+            "Move them to another team first — deleting would leave them pointing at nothing.",
+        )
+
+    await users_col.update_many({"teamIds": team_id}, {"$pull": {"teamIds": team_id}})
+    await teams_col.delete_one({"id": team_id})
+    return {"ok": True, "deleted": team_id}
+
+
 @router.get("/api/teams/{team_id}/sessions")
 async def team_sessions(
     team_id: str,

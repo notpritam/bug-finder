@@ -50,13 +50,22 @@ def bob():
 
 @pytest.fixture(scope="module")
 def made(alice, bob):
-    """Teams created during the run, cleaned up after along with the throwaway logins."""
+    """Teams created during the run — DELETED afterwards, not merely left.
+
+    The first version of this only left the teams and closed the logins, so every run added a few
+    more rows to a shared database; 75 had piled up before the Teams page made them visible. It now
+    fails loudly if anything survives, because a suite that leaks quietly is a suite nobody notices
+    is leaking.
+    """
     ids: list[str] = []
     yield ids
+    leaked = []
+    for tid in ids:
+        if not any(s.delete(f"{API}/{tid}", timeout=TIMEOUT).status_code in (200, 404) for s in (alice, bob)):
+            leaked.append(tid)
     for s in (alice, bob):
-        for tid in ids:
-            s.post(f"{API}/{tid}/leave", timeout=TIMEOUT)
         s.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
+    assert not leaked, f"test teams left behind: {leaked}"
 
 
 def _new_team(session, made, name=None, description=""):
@@ -245,3 +254,34 @@ def test_joining_a_team_does_not_silently_drop_your_legacy_one(made):
     finally:
         eve.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
         founder.delete(f"{BASE_URL}/api/auth/me", timeout=TIMEOUT)
+
+
+def test_a_team_holding_sessions_refuses_to_be_deleted(alice, made):
+    """Sessions are stamped with their team at filing and are evidence. Cascading a delete through
+    them would quietly unstamp a body of work, which is the kind of loss this product exists to
+    prevent — so the delete is refused and says what to do instead."""
+    team = _new_team(alice, made)
+    human_id = requests.post(f"{BUGS}/allocate", json={}, timeout=TIMEOUT).json()["humanId"]
+    body = {
+        "id": f"d-del-{uuid.uuid4().hex[:8]}", "humanId": human_id, "title": "pytest delete guard",
+        "description": "", "status": "open", "severity": "medium", "tags": [],
+        "pageUrl": "https://example.com", "reporter": alice.user, "assignee": None,
+        "createdAt": 1, "updatedAt": 1, "durationMs": 1000, "scenario": "generic",
+        "replay": [], "visits": [], "console": [], "network": [], "pickedElements": [], "markers": [],
+        "environment": {"browser": "Chrome", "os": "macOS", "viewport": {"w": 1, "h": 1},
+                        "dpr": 1, "language": "en", "timezone": "UTC", "online": True},
+        "events": [],
+    }
+    requests.put(f"{BUGS}/{human_id}", json=body, timeout=TIMEOUT)
+    try:
+        res = alice.delete(f"{API}/{team['id']}", timeout=TIMEOUT)
+        assert res.status_code == 409, res.text
+        assert "session" in res.text
+    finally:
+        # Detach the session so the fixture's own cleanup can remove the team.
+        alice.delete(f"{BUGS}/{human_id}", timeout=TIMEOUT)
+
+
+def test_a_non_member_cannot_delete_the_team(alice, bob, made):
+    team = _new_team(alice, made)
+    assert bob.delete(f"{API}/{team['id']}", timeout=TIMEOUT).status_code == 403
