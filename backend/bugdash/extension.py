@@ -12,23 +12,36 @@ router = APIRouter()
 
 releases_col = db["bf_extension_release"]
 
-#: The build this dashboard expects. Bumped when a new extension ships. A row in
-#: bf_extension_release overrides it, so a release can be announced without redeploying the API —
-#: the dashboard and the extension ship on different clocks and always will.
+#: The build this dashboard expects.
+#:
+#: This is now a FALLBACK in the literal sense. Since 0.2.6 the extension asks GitHub first —
+#: github.com/notpritam/bug-finder-releases/releases/latest/download/latest.json — and only falls
+#: back to this endpoint when that is unreachable. Both are tried, so neither one being down
+#: blinds an install.
+#:
+#: Publishing a build therefore no longer touches this file, or this repo, or the pod. What the
+#: dashboard keeps is the ability to OVERRIDE: a row in bf_extension_release wins over everything
+#: below, which is how a bad build gets pinned or rolled back without cutting another release.
+#: Keep the version here roughly in step anyway — an endpoint that lies about the current build is
+#: worse than one that is merely redundant.
 FALLBACK = {
-    "version": "0.2.5",
-    # Served by the dashboard, not GitHub: the extension repo is private, so a release link
-    # 404s for every person it would be shared with. The dashboard is the one place everyone
-    # already has access to — they need it to see the bug they just filed.
-    "downloadUrl": "/bug-finder-0.2.5.zip",
+    "version": "0.2.6",
+    # Points at the GitHub release rather than a file in this repo. The earlier comment here said
+    # GitHub was impossible because "the extension repo is private" — true of the SOURCE repo, but
+    # the releases repo is public precisely so the download does not need to live in the dashboard.
+    # The old /bug-finder-*.zip files stay served so links already shared keep working; nothing new
+    # gets committed here.
+    "downloadUrl": "https://github.com/notpritam/bug-finder-releases/releases/latest/download/bug-finder-0.2.6.zip",
     "installUrl": "/connect",
     "notes": (
-        "Fixes three field reports: a filing that was merely slow was being announced as a "
-        "failure, an upload whose document died left the capture stuck and lost the replay, and "
-        "one submission could become several bugs. Also keeps the two minutes before you pressed "
-        "Record even if you refresh first. If you are on anything older than 0.2.4, remove it "
-        "before loading this — 0.2.4 pinned the extension ID, so Chrome treats the two as "
-        "separate extensions and both would try to record."
+        "Works properly in responsive / device mode: the recording pill only revealed its actions "
+        "on hover, which touch and device emulation do not have, so on a narrow viewport the "
+        "buttons never appeared at all. It now folds down to the timer, a way into the side panel "
+        "and Stop when the row will not fit, and opens on tap where there is room. Compare moved "
+        "into the side panel. Also adds a light theme — System, Light or Dark from the panel "
+        "header — across the panel and the in-page overlays. If you are on anything older than "
+        "0.2.4, remove it before loading this — 0.2.4 pinned the extension ID, so Chrome treats "
+        "the two as separate extensions and both would try to record."
     ),
     # 0.2.4 is the first build with a `key`, so it is the first one whose ID is stable. Anything
     # older installed unpacked has a path-derived ID that no update can ever reach; the note above
